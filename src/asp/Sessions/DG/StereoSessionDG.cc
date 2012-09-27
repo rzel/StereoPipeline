@@ -174,6 +174,22 @@ namespace asp {
     geo.principal_distance /= geo.detector_pixel_pitch;
     geo.detector_origin /= geo.detector_pixel_pitch;
 
+    Vector2 shift(0, 0);
+    
+#if 1
+    // Need to add to detector the ul of the window - 1
+    std::string f = camera_file;
+    std::replace( f.begin(), f.end(), '.', '_' ); std::replace( f.begin(), f.end(), '-', '_' );
+    std::cout << "will read: " << f << std::endl;
+    int shift1, shift2;
+    std::ifstream fh(f.c_str());
+    if (fh >> shift1 >> shift2){
+      std::cout << "pixel corner is " << shift1 << ' ' << shift2 << std::endl;
+      shift = Vector2(shift1-1, shift2-1);
+      std::cout << "--- shift is " << shift << std::endl;
+    }
+#endif
+    
     // Convert all time measurements to something that boost::date_time can read.
     boost::replace_all( eph.start_time, "T", " " );
     boost::replace_all( img.tlc_start_time, "T", " " );
@@ -230,7 +246,7 @@ namespace asp {
     typedef LinescanDGModel<camera::PiecewiseAPositionInterpolation, camera::SLERPPoseInterpolation, camera::TLCTimeInterpolation> camera_type;
     typedef boost::shared_ptr<camera::CameraModel> result_type;
 
-    return result_type( new camera_type( camera::PiecewiseAPositionInterpolation( eph.position_vec, eph.velocity_vec,
+    return result_type( new camera_type(shift, camera::PiecewiseAPositionInterpolation( eph.position_vec, eph.velocity_vec,
                                                                                   convert( pt::time_from_string( eph.start_time ) ),
                                                                                   eph.time_interval ),
                                          camera::SLERPPoseInterpolation( att.quat_vec,

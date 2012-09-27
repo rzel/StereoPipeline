@@ -25,11 +25,17 @@
 #include <asp/Sessions/RPC/RPCStereoModel.h>
 #include <vw/Cartography.h>
 #include <vw/Camera/CameraModel.h>
+#include <vw/Camera/Extrinsics.h>
 #include <vw/Stereo/StereoView.h>
-#include <time.h>
+#include <vw/Camera/PinholeModel.h>
+#include <asp/Sessions/DG/LinescanDGModel.h>
+#include <asp/Sessions/DG/StereoSessionDG.h>
 
 using namespace vw;
 using namespace asp;
+
+vw::camera::CameraModel * g_cam1;
+vw::camera::CameraModel * g_cam2;
 
 namespace vw {
   template<> struct PixelFormatID<PixelMask<Vector<float, 5> > >   { static const PixelFormatEnum value = VW_PIXEL_GENERIC_6_CHANNEL; };
@@ -41,6 +47,9 @@ namespace vw {
 template <class DisparityImageT, class StereoModelT>
 class StereoAndErrorView : public ImageViewBase<StereoAndErrorView<DisparityImageT, StereoModelT> >
 {
+
+  vw::camera::CameraModel const* m_camera_model1;
+  vw::camera::CameraModel const* m_camera_model2;
   DisparityImageT m_disparity_map;
   StereoModelT m_stereo_model;
   typedef typename DisparityImageT::pixel_type dpixel_type;
@@ -54,24 +63,78 @@ class StereoAndErrorView : public ImageViewBase<StereoAndErrorView<DisparityImag
   inline typename boost::enable_if<IsScalar<T>,Vector3>::type
   StereoModelHelper( StereoModelT const& model, Vector2 const& index,
                      T const& disparity, double& error ) const {
+    std::cout << "helper1" << std::endl;
     return model( index, Vector2( index[0] + disparity, index[1] ), error );
   }
 
   template <class T>
   inline typename boost::enable_if_c<IsCompound<T>::value && (CompoundNumChannels<typename UnmaskedPixelType<T>::type>::value == 1),Vector3>::type
-    StereoModelHelper( StereoModelT const& model, Vector2 const& index,
-                       T const& disparity, double& error ) const {
+  StereoModelHelper( StereoModelT const& model, Vector2 const& index,
+                     T const& disparity, double& error ) const {
+    std::cout << "helper2" << std::endl;
     return model( index, Vector2( index[0] + disparity, index[1] ), error );
   }
 
   template <class T>
   inline typename boost::enable_if_c<IsCompound<T>::value && (CompoundNumChannels<typename UnmaskedPixelType<T>::type>::value != 1),Vector3>::type
-    StereoModelHelper( StereoModelT const& model, Vector2 const& index,
-                       T const& disparity, double& error ) const {
-    return model( index, Vector2( index[0] + disparity[0],
-                                  index[1] + disparity[1] ), error );
-  }
+  StereoModelHelper( StereoModelT const& model, Vector2 const& index,
+                     T const& disparity, double& error ) const {
 
+    Vector3 res = model( index, Vector2( index[0] + disparity[0],
+                                         index[1] + disparity[1] ), error );
+    
+    if (index[0] == 701 && index[1] == 701 ){
+
+      std::cout.precision(20);
+      std::cout << "\n\n\n----------pixel is " << index[0] << ' ' << index[1]  << ' ' << index[0] + disparity[0] << ' ' << index[1] + disparity[1]  << "\n\n\n" << std::endl;
+
+      std::cout << "result is " << res << std::endl;
+      std::cout << "error is: " << error << std::endl;
+
+      std::cout << "point to pixel1: " << g_cam1->point_to_pixel(res) << std::endl;
+      std::cout << "point to pixel2: " << g_cam2->point_to_pixel(res) << std::endl;
+      
+#if 0
+      typedef LinescanDGModel<camera::PiecewiseAPositionInterpolation, camera::SLERPPoseInterpolation, camera::TLCTimeInterpolation> camera_type;
+
+      camera_type const* cam1 = dynamic_cast<camera_type const*>(g_cam1);
+      camera_type const* cam2 = dynamic_cast<camera_type const*>(g_cam2);
+      std::cout << "\nbefore casting pointers: " << g_cam1 << ' ' << g_cam2 << std::endl;
+      std::cout << "after casting pointers: " << cam1 << ' ' << cam2 << std::endl;
+
+      Vector3 res1 = model( index, Vector2( index[0] + disparity[0],
+                                            index[1] + disparity[1] ), error );
+          
+      camera::PinholeModel pinhole1 = cam1->linescan_to_pinhole(index[1]);
+      camera::PinholeModel pinhole2 = cam2->linescan_to_pinhole(index[1] + disparity[1]);
+          
+      bool least_squares_refine = false;
+      stereo::StereoModel model2(&pinhole1, &pinhole2, least_squares_refine);
+          
+      Vector3 res2 = model2( index, Vector2( index[0] + disparity[0],
+                                             index[1] + disparity[1] ), error );
+          
+      std::cout << "result 1 is " << res1 << std::endl;
+      std::cout << "result 2 is " << res2 << std::endl;
+
+      std::string cam1File = "cam1.pinhole";
+      std::cout << "Writing " << cam1File << std::endl;
+      pinhole1.write(cam1File);
+      
+      std::string cam2File = "cam2.pinhole";
+      std::cout << "Writing " << cam2File << std::endl;
+      pinhole2.write(cam2File);
+
+      std::cout << "pinhole camera1 is:\n\n" << pinhole1 << std::endl << std::endl;
+      std::cout << "pinhole camera1 matrix is " << pinhole1.camera_matrix() << std::endl;
+      std::cout << "pinhole camera2 is:\n\n" << pinhole2 << std::endl << std::endl;
+      std::cout << "pinhole camera2 matrix is " << pinhole2.camera_matrix() << std::endl;
+#endif
+
+    }    
+    return res;
+  }
+  
 public:
 
   typedef Vector4 pixel_type;
@@ -82,6 +145,8 @@ public:
                       vw::camera::CameraModel const* camera_model1,
                       vw::camera::CameraModel const* camera_model2,
                       bool least_squares_refine = false) :
+    m_camera_model1(camera_model1),
+    m_camera_model2(camera_model2),
     m_disparity_map(disparity_map),
     m_stereo_model(camera_model1, camera_model2, least_squares_refine) {}
 
@@ -99,6 +164,7 @@ public:
   inline result_type operator()( size_t i, size_t j, size_t p=0 ) const {
     if ( is_valid(m_disparity_map(i,j,p)) ) {
       pixel_type result;
+      //std::cout << "--- in operator=" << std::endl;
       subvector(result,0,3) = StereoModelHelper( m_stereo_model, Vector2(i,j),
                                                  m_disparity_map(i,j,p), result[3] );
       return result;
@@ -118,13 +184,15 @@ public:
 template <class DisparityImageT, class LUTImage1T, class LUTImage2T, class StereoModelT>
 class StereoLUTAndErrorView : public ImageViewBase<StereoLUTAndErrorView<DisparityImageT, LUTImage1T, LUTImage2T, StereoModelT> >
 {
+  vw::camera::CameraModel const* m_camera_model1;
+  vw::camera::CameraModel const* m_camera_model2;
   DisparityImageT m_disparity_map;
   LUTImage1T m_lut_image1;
   InterpolationView< EdgeExtensionView<LUTImage2T, ConstantEdgeExtension>, BilinearInterpolation>  m_lut_image2;
   LUTImage2T m_lut_image2_org;
   StereoModelT m_stereo_model;
   typedef typename DisparityImageT::pixel_type dpixel_type;
-
+  
   template <class PixelT>
   struct NotSingleChannel {
     static const bool value = (1 != CompoundNumChannels<typename UnmaskedPixelType<PixelT>::type>::value);
@@ -133,13 +201,16 @@ class StereoLUTAndErrorView : public ImageViewBase<StereoLUTAndErrorView<Dispari
   template <class T>
   inline typename boost::enable_if<IsScalar<T>,Vector3>::type
   StereoModelHelper( size_t i, size_t j, T const& disparity, double& error ) const {
+    std::cout << "helper4" << std::endl;
+
     return m_stereo_model( m_lut_image1(i,j),
                            m_lut_image2( T(i) + disparity, j ), error );
   }
 
   template <class T>
   inline typename boost::enable_if_c<IsCompound<T>::value && (CompoundNumChannels<typename UnmaskedPixelType<T>::type>::value == 1),Vector3>::type
-    StereoModelHelper( size_t i, size_t j, T const& disparity, double& error ) const {
+  StereoModelHelper( size_t i, size_t j, T const& disparity, double& error ) const {
+    std::cout << "helper5" << std::endl;
     return m_stereo_model( m_lut_image1(i,j),
                            m_lut_image2( float(i) + disparity, j ),  error );
   }
@@ -171,10 +242,14 @@ public:
                          vw::camera::CameraModel const* camera_model1,
                          vw::camera::CameraModel const* camera_model2,
                          bool least_squares_refine = false) :
+    m_camera_model1(camera_model1),
+    m_camera_model2(camera_model2),
     m_disparity_map(disparity_map.impl()), m_lut_image1( lut_image1.impl() ),
     m_lut_image2(interpolate(lut_image2.impl())),
     m_lut_image2_org( lut_image2.impl() ),
-    m_stereo_model(camera_model1, camera_model2, least_squares_refine) {}
+    m_stereo_model(camera_model1, camera_model2, least_squares_refine) {
+    std::cout << "pointers to camera are " << m_camera_model1 << ' ' << m_camera_model2 << std::endl;
+  }
 
   StereoLUTAndErrorView( ImageViewBase<DisparityImageT> const& disparity_map,
                          ImageViewBase<LUTImage1T> const& lut_image1,
@@ -242,6 +317,7 @@ StereoAndErrorView<ImageT, StereoModelT>
 stereo_error_triangulate( ImageViewBase<ImageT> const& v,
                           vw::camera::CameraModel const* camera1,
                           vw::camera::CameraModel const* camera2 ) {
+  std::cout << "now in triangulate!" << std::endl;
   return StereoAndErrorView<ImageT, StereoModelT>( v.impl(), camera1, camera2 );
 }
 
@@ -290,7 +366,7 @@ void stereo_triangulation( Options const& opt ) {
 
     boost::shared_ptr<camera::CameraModel> camera_model1, camera_model2;
     opt.session->camera_models(camera_model1, camera_model2);
-
+    
 #if HAVE_PKG_VW_BUNDLEADJUSTMENT
     // If the user has generated a set of position and pose
     // corrections using the bundle_adjust program, we read them in
@@ -315,6 +391,13 @@ void stereo_triangulation( Options const& opt ) {
     }
 #endif
 
+    
+#if 1
+    g_cam1 = (vw::camera::CameraModel*) camera_model1.get();
+    g_cam2 = (vw::camera::CameraModel*) camera_model2.get();
+    std::cout << "----camera 1 and 2 are " << g_cam1 << ' ' << g_cam2 << std::endl;
+#endif
+    
     // If the distance from the left camera center to a point is
     // greater than the universe radius, we remove that pixel and
     // replace it with a zero vector, which is the missing pixel value
@@ -327,11 +410,12 @@ void stereo_triangulation( Options const& opt ) {
 
       if (opt.stereo_session_string == "rpc")
         vw_throw(InputErr() << "Stereo with RPC cameras cannot have the camera as the universe center.\n");
-
+      
       universe_radius_func =
         stereo::UniverseRadiusFunc(camera_model1->camera_center(Vector2()),
                                    stereo_settings().near_universe_radius,
                                    stereo_settings().far_universe_radius);
+      
     } else if ( stereo_settings().universe_center == "zero" ) {
       universe_radius_func =
         stereo::UniverseRadiusFunc(Vector3(),
@@ -339,6 +423,7 @@ void stereo_triangulation( Options const& opt ) {
                                    stereo_settings().far_universe_radius);
     }
 
+    
     // Apply radius function and stereo model in one go
     vw_out() << "\t--> Generating a 3D point cloud.   " << std::endl;
     ImageViewRef<Vector4> point_cloud;
@@ -400,7 +485,7 @@ void stereo_triangulation( Options const& opt ) {
 int main( int argc, char* argv[] ) {
 
   stereo_register_sessions();
-
+  
   Options opt;
   try {
     handle_arguments( argc, argv, opt,
@@ -408,7 +493,7 @@ int main( int argc, char* argv[] ) {
 
     // Internal Processes
     //---------------------------------------------------------
-
+    
     if (opt.stereo_session_string != "rpc"){
       stereo_triangulation<stereo::StereoModel>( opt );
     }else{

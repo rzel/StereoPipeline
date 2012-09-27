@@ -93,15 +93,17 @@ namespace asp {
     //------------------------------------------------------------------
     // Constructors / Destructors
     //------------------------------------------------------------------
-    LinescanDGModel( PositionFuncT const& position,
+    LinescanDGModel(vw::Vector2 shift, PositionFuncT const& position,
                      PoseFuncT const& pose,
                      TimeFuncT const& time,
                      vw::Vector2i const& image_size,
                      vw::Vector2 const& detector_origin,
-                     double focal_length ) :
+                    double focal_length ) :
       m_position_func(position), m_pose_func(pose), m_time_func(time),
       m_image_size(image_size), m_detector_origin(detector_origin),
-      m_focal_length(focal_length) {}
+      m_focal_length(focal_length) {
+      m_detector_origin += shift;
+    }
 
     virtual ~LinescanDGModel() {}
     virtual std::string type() const { return "LinescanDG"; }
@@ -155,17 +157,17 @@ namespace asp {
     }
 
     vw::camera::PinholeModel linescan_to_pinhole(double y) const{
- 
-      // Create a fake pinhole model. It will return the same results
-      // as the linescan camera at current line y, but we will use it
-      // by extension at neighboring lines as well.
+
+      // Create a fake pinhole model at the current line y. It will
+      // return the same results as the linescan camera at current
+      // line y, but we will use it by extension at neighboring lines
+      // as well.
       double t = m_time_func( y );
       return vw::camera::PinholeModel(m_position_func(t),  m_pose_func(t).rotation_matrix(),
                                       m_focal_length, -m_focal_length,
                                       -m_detector_origin[0], y - m_detector_origin[1]
                                       );
     }
-
   };
 
 }      // namespace asp
