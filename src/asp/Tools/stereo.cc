@@ -253,6 +253,7 @@ namespace asp {
       // Can cameras triangulate to point at something in front of them?
       stereo::StereoModel model( camera_model1.get(), camera_model2.get() );
       double error;
+      std::cout.precision(20);
       Vector3 point = model( Vector2(), Vector2(), error );
       if ( dot_prod( camera_model1->pixel_to_vector(Vector2()),
                      point - camera_model1->camera_center(Vector2()) ) < 0 )
@@ -262,6 +263,25 @@ namespace asp {
           << "\tthe camera models. You should double check\n"
           << "\tyour input models as most likely stereo won't\n"
           << "\tbe able to triangulate.\n";
+#if 0
+      std::cout << "-cam1 pixel2vec:  " << camera_model1->pixel_to_vector(Vector2()) << std::endl;
+      std::cout << "cam1 center:     " << camera_model1->camera_center(Vector2()) << std::endl;
+      std::cout << std::endl;
+
+      std::cout << "-cam2 pixel2vec  " <<  camera_model2->pixel_to_vector(Vector2()) << std::endl;
+      std::cout << "cam2 center     " <<  camera_model2->camera_center(Vector2()) << std::endl;
+      std::cout << std::endl;
+      
+      std::cout << "point:           " << point << std::endl;
+      std::cout << "point - center1: " << point - camera_model1->camera_center(Vector2()) << std::endl;
+      std::cout << "point - center2: " << point - camera_model2->camera_center(Vector2()) << std::endl;
+      std::cout << "error: " << error << std::endl;
+
+      std::cout << "cam1 matrix: " <<  camera_model1->camera_matrix() << std::endl;
+      std::cout << std::endl;
+      std::cout << "cam2 matrix: " <<  camera_model2->camera_matrix() << std::endl;
+      exit(0);
+#endif      
     } catch ( camera::PixelToRayErr const& e ) {
     } catch ( camera::PointToPixelErr const& e ) {
       // Silent. Top Left pixel might not be valid on a map

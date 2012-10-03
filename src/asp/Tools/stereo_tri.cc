@@ -82,17 +82,21 @@ class StereoAndErrorView : public ImageViewBase<StereoAndErrorView<DisparityImag
 
     Vector3 res = model( index, Vector2( index[0] + disparity[0],
                                          index[1] + disparity[1] ), error );
-    
+
     if (index[0] == 701 && index[1] == 701 ){
 
+      Vector2 pix1(index[0], index[1]);
+      Vector2 pix2(index[0] + disparity[0], index[1] + disparity[1]);
       std::cout.precision(20);
-      std::cout << "\n\n\n----------pixel is " << index[0] << ' ' << index[1]  << ' ' << index[0] + disparity[0] << ' ' << index[1] + disparity[1]  << "\n\n\n" << std::endl;
+      std::cout << "\n\n\n----------pixels are " << pix1 << ' ' << pix2 << "\n\n\n" << std::endl;
 
       std::cout << "result is " << res << std::endl;
       std::cout << "error is: " << error << std::endl;
 
-      std::cout << "point to pixel1: " << g_cam1->point_to_pixel(res) << std::endl;
-      std::cout << "point to pixel2: " << g_cam2->point_to_pixel(res) << std::endl;
+      Vector2 p_pix1 = g_cam1->point_to_pixel(res);
+      Vector2 p_pix2 = g_cam2->point_to_pixel(res);
+      std::cout << "point to pixel1 and diff: " << p_pix1 << ' ' << p_pix1 - pix1 << std::endl;
+      std::cout << "point to pixel2 and diff: " << p_pix2 << ' ' << p_pix2 - pix2 << std::endl;
       
 #if 0
       typedef LinescanDGModel<camera::PiecewiseAPositionInterpolation, camera::SLERPPoseInterpolation, camera::TLCTimeInterpolation> camera_type;
@@ -102,9 +106,10 @@ class StereoAndErrorView : public ImageViewBase<StereoAndErrorView<DisparityImag
       std::cout << "\nbefore casting pointers: " << g_cam1 << ' ' << g_cam2 << std::endl;
       std::cout << "after casting pointers: " << cam1 << ' ' << cam2 << std::endl;
 
+      double error1, error2;
       Vector3 res1 = model( index, Vector2( index[0] + disparity[0],
-                                            index[1] + disparity[1] ), error );
-          
+                                            index[1] + disparity[1] ), error1 );
+
       camera::PinholeModel pinhole1 = cam1->linescan_to_pinhole(index[1]);
       camera::PinholeModel pinhole2 = cam2->linescan_to_pinhole(index[1] + disparity[1]);
           
@@ -112,11 +117,18 @@ class StereoAndErrorView : public ImageViewBase<StereoAndErrorView<DisparityImag
       stereo::StereoModel model2(&pinhole1, &pinhole2, least_squares_refine);
           
       Vector3 res2 = model2( index, Vector2( index[0] + disparity[0],
-                                             index[1] + disparity[1] ), error );
+                                             index[1] + disparity[1] ), error2 );
           
       std::cout << "result 1 is " << res1 << std::endl;
       std::cout << "result 2 is " << res2 << std::endl;
+      std::cout << std::endl;
+      std::cout << "error 1 is " << error1 << std::endl;
+      std::cout << "error 2 is " << error2 << std::endl;
 
+      std::cout << "diff1 is " << norm_2(res - res1) << std::endl;
+      std::cout << "diff2 is " << norm_2(res - res2) << std::endl;
+      
+      
       std::string cam1File = "cam1.pinhole";
       std::cout << "Writing " << cam1File << std::endl;
       pinhole1.write(cam1File);
@@ -125,6 +137,11 @@ class StereoAndErrorView : public ImageViewBase<StereoAndErrorView<DisparityImag
       std::cout << "Writing " << cam2File << std::endl;
       pinhole2.write(cam2File);
 
+      Vector2 c_pix1 = pinhole1.point_to_pixel(res2);
+      Vector2 c_pix2 = pinhole2.point_to_pixel(res2);
+      std::cout << "pinhole point to pixel1 and diff: " << c_pix1 << ' ' << c_pix1 - pix1 << std::endl;
+      std::cout << "pinhole point to pixel2 and diff: " << c_pix2 << ' ' << c_pix2 - pix2 << std::endl;
+      std::cout << std::endl;
       std::cout << "pinhole camera1 is:\n\n" << pinhole1 << std::endl << std::endl;
       std::cout << "pinhole camera1 matrix is " << pinhole1.camera_matrix() << std::endl;
       std::cout << "pinhole camera2 is:\n\n" << pinhole2 << std::endl << std::endl;
@@ -219,6 +236,7 @@ class StereoLUTAndErrorView : public ImageViewBase<StereoLUTAndErrorView<Dispari
   inline typename boost::enable_if_c<IsCompound<T>::value && (CompoundNumChannels<typename UnmaskedPixelType<T>::type>::value != 1),Vector3>::type
     StereoModelHelper( size_t i, size_t j, T const& disparity, double& error ) const {
 
+    std::cout << "helper 6" << std::endl;
     float i2 = float(i) + disparity[0];
     float j2 = float(j) + disparity[1];
     if ( i2 < 0 || i2 >= m_lut_image2.cols() ||
@@ -390,7 +408,6 @@ void stereo_triangulation( Options const& opt ) {
                                                                pose_correction));
     }
 #endif
-
     
 #if 1
     g_cam1 = (vw::camera::CameraModel*) camera_model1.get();
