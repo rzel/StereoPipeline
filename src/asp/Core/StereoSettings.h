@@ -92,6 +92,7 @@ namespace asp {
                                       // 1 = squared difference
                                       // 2 = normalized cross correlation 
     vw::uint16 corr_max_levels;       // Max pyramid levels to process. 0 hits only once.
+    double edge_density_threshold;    // Minimum acceptable edge density at a given pyramid level
 
                                       // search range, used to define the
                                       // search range of D_sub.

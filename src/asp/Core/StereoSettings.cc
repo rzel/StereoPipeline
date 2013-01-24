@@ -91,8 +91,10 @@ namespace asp {
       ("corr-search", po::value(&global.search_range)->default_value(BBox2i(0,0,0,0), "auto"),
        "Disparity search range. Specify in format: hmin vmin hmax vmax.")
       ("corr-max-levels", po::value(&global.corr_max_levels)->default_value(5),
-       "Max pyramid levels to process when using the integer correlator. (0 is just a single level).");
-
+       "Max pyramid levels to process when using the integer correlator. (0 is just a single level).")
+      ("edge-density-threshold", po::value(&global.edge_density_threshold)->default_value(0),
+       "Minimum acceptable edge density at a given pyramid level.");
+    
     po::options_description backwards_compat_options("Aliased backwards compatibility options");
     backwards_compat_options.add_options()
       ("h-kernel", po::value(&global.kernel[0]), "Correlation kernel width")

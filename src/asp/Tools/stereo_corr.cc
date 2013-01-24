@@ -143,7 +143,8 @@ public:
                           m_preproc_func, local_search_range,
                           stereo_settings().kernel, m_cost_mode,
                           stereo_settings().xcorr_threshold,
-                          stereo_settings().corr_max_levels );
+                          stereo_settings().corr_max_levels,
+                          stereo_settings().edge_density_threshold);
 
       return corr_view.prerasterize( bbox );
     } else if ( stereo_settings().seed_mode > 1 ) {
@@ -158,7 +159,8 @@ public:
                         m_preproc_func, stereo_settings().search_range,
                         stereo_settings().kernel, m_cost_mode,
                         stereo_settings().xcorr_threshold,
-                        stereo_settings().corr_max_levels );
+                        stereo_settings().corr_max_levels,
+                        stereo_settings().edge_density_threshold);
 
     return corr_view.prerasterize( bbox );
   }
@@ -377,7 +379,11 @@ void produce_lowres_disparity( int32 cols, int32 rows, Options const& opt ) {
                                                               stereo::LaplacianOfGaussian(stereo_settings().slogW),
                                                               search_range,
                                                               stereo_settings().kernel,
-                                                              stereo::CROSS_CORRELATION, 2 ),
+                                                              stereo::CROSS_CORRELATION, 2
+                                                              // bug here???
+                                                              //, 5, // max pyramid levels
+                                                              //stereo_settings().edge_density_threshold
+                                                              ),
                                    1, 1, 2.0, 0.5), opt,
                                  TerminalProgressCallback("asp", "\t--> Low Resolution:") );
   }
