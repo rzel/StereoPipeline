@@ -465,7 +465,11 @@ asp::StereoSessionIsis::camera_model(std::string const& image_file,
     return boost::shared_ptr<camera::CameraModel>(new IsisAdjustCameraModel( image_file, posF, poseF ));
 
   } else {
-    return boost::shared_ptr<camera::CameraModel>(new IsisCameraModel(image_file));
+    // If the image file is a .cub, it also has the camera information
+    if (boost::ends_with(boost::to_lower_copy(image_file), ".cub"))
+      return boost::shared_ptr<camera::CameraModel>(new IsisCameraModel(image_file));
+    // Otherwise look in the camera file
+    return boost::shared_ptr<camera::CameraModel>(new IsisCameraModel(camera_file));
   }
 
 }

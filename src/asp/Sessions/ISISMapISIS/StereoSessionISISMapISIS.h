@@ -16,27 +16,28 @@
 // __END_LICENSE__
 
 
-/// \file StereoSessionDGMapRPC.h
+/// \file StereoSessionISISMapISIS.h
 ///
-/// This a session that support RPC Mapproject DG images. It is built
+/// This a session that support ISIS Mapproject ISIS images. It is built
 /// entirely so that left and right TX are objects and not
 /// TransformRefs.
 
-#ifndef __STEREO_SESSION_DGMAPRPC_H__
-#define __STEREO_SESSION_DGMAPRPC_H__
+#ifndef __STEREO_SESSION_ISISMAPISIS_H__
+#define __STEREO_SESSION_ISISMAPISIS_H__
 
-#include <asp/Sessions/DG/StereoSessionDG.h>
+#include <asp/Sessions/ISIS/StereoSessionIsis.h>
 #include <vw/Cartography/Map2CamTrans.h>
 #include <vw/Image/Transform.h>
 
-namespace asp {
-
-  class RPCModel;
+namespace vw{ namespace camera{
+  class CameraModel;
+}}
   
-  class StereoSessionDGMapRPC : public StereoSessionDG {
+namespace asp {
+  class StereoSessionISISMapISIS : public StereoSessionIsis {
   public:
-    StereoSessionDGMapRPC(){};
-    virtual ~StereoSessionDGMapRPC(){};
+    StereoSessionISISMapISIS(){};
+    virtual ~StereoSessionISISMapISIS(){};
 
     // Initializer verifies that the input is map projected
     virtual void initialize(BaseOptions const& options,
@@ -50,8 +51,13 @@ namespace asp {
                             std::string const& extra_argument2,
                             std::string const& extra_argument3);
 
-    virtual std::string name() const { return "dgmaprpc"; }
+    virtual std::string name() const { return "isismapisis"; }
 
+    virtual void pre_preprocessing_hook(std::string const& input_file1,
+                                        std::string const& input_file2,
+                                        std::string &output_file1,
+                                        std::string &output_file2);
+    
     // Allows specialization of how matches are captured.
     virtual bool ip_matching( std::string const& match_filename,
                               double left_nodata_value,
@@ -65,11 +71,12 @@ namespace asp {
     left_tx_type tx_left() const;
     right_tx_type tx_right() const;
 
-    static StereoSession* construct() { return new StereoSessionDGMapRPC; }
+    static StereoSession* construct() { return new StereoSessionISISMapISIS; }
 
-    boost::shared_ptr<RPCModel> m_left_model, m_right_model;
+    boost::shared_ptr<vw::camera::CameraModel> m_left_model, m_right_model;
+    
   };
 
 }
 
-#endif//__STEREO_SESSION_DGMAPRPC_H__
+#endif//__STEREO_SESSION_ISISMAPISIS_H__

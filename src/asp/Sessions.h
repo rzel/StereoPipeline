@@ -28,6 +28,7 @@
 
 #include <asp/Sessions/DG/StereoSessionDG.h>
 #include <asp/Sessions/DGMapRPC/StereoSessionDGMapRPC.h>
+#include <asp/Sessions/ISISMapISIS/StereoSessionISISMapISIS.h>
 #include <asp/Sessions/NadirPinhole/StereoSessionNadirPinhole.h>
 #include <asp/Sessions/Pinhole/StereoSessionPinhole.h>
 #include <asp/Sessions/RPC/StereoSessionRPC.h>

@@ -38,6 +38,24 @@
 
 namespace asp {
 
+  // Specialize CompositionTransform that allows passing of BBox so
+  // Map2CamTrans can cache itself.
+  template <class Tx1T, class Tx2T>
+  class CompositionTransformPassBBox : public vw::TransformBase<CompositionTransformPassBBox<Tx1T,Tx2T> > {
+  public:
+    CompositionTransformPassBBox( Tx1T const& tx1, Tx2T const& tx2 ) : tx1(tx1), tx2(tx2) {}
+
+    Tx1T tx1; // Be sure to copy!
+    Tx2T tx2; // public so that we can invoke caching manually for Map2CamTrans
+
+    inline vw::Vector2 forward( vw::Vector2 const& p ) const { return tx1.forward( tx2.forward( p ) ); }
+    inline vw::Vector2 reverse( vw::Vector2 const& p ) const { return tx2.reverse( tx1.reverse( p ) ); }
+
+    inline vw::BBox2i reverse_bbox( vw::BBox2i const& bbox ) const {
+      return this->tx2.reverse_bbox(this->tx1.reverse_bbox(bbox));
+    }
+  };
+
   // Stereo Sessions define for different missions or satellites how to:
   //   * Initialize, normalize, and align the input imagery
   //   * Extract the camera model
@@ -50,6 +68,7 @@ namespace asp {
   //   typedef VWTransform right_tx_type;
   //   right_tx_type tx_right( void ) const;
   //   typedef VWStereoModel stereo_model_type;
+
   class StereoSession {
   protected:
     asp::BaseOptions m_options;
@@ -121,6 +140,10 @@ namespace asp {
     // Method to help determine what session we actually have
     virtual std::string name() const = 0;
 
+    virtual bool ip_matching( std::string const& match_filename,
+                              double left_nodata_value,
+                              double right_nodata_value );
+    
     // Stage 1: Preprocessing
     //
     // Pre file is a pair of images.            ( ImageView<PixelT> )

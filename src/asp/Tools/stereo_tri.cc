@@ -66,7 +66,7 @@ namespace asp{
     std::string point_cloud_file = opt.out_prefix + "-PC.tif";
     vw_out() << "Writing point cloud: " << point_cloud_file << "\n";
 
-    if ( opt.session->name() == "isis" ){
+    if ( opt.session->name() == "isis" || opt.session->name() == "isismapisis" ){
       // ISIS does not support multi-threading
       asp::write_approx_gdal_image
         ( point_cloud_file, shift,
@@ -217,9 +217,7 @@ private:
   }
 
   template <class T1, class T2>
-  typename boost::disable_if< boost::mpl::and_<boost::is_same<T1,StereoSessionDGMapRPC::left_tx_type>,
-                                               boost::is_same<T2,StereoSessionDGMapRPC::right_tx_type> >,
-                              prerasterize_type>::type
+  typename boost::disable_if< boost::mpl::or_< boost::mpl::and_<boost::is_same<T1,StereoSessionDGMapRPC::left_tx_type>, boost::is_same<T2,StereoSessionDGMapRPC::right_tx_type> >, boost::mpl::and_<boost::is_same<T1,StereoSessionISISMapISIS::left_tx_type>, boost::is_same<T2,StereoSessionISISMapISIS::right_tx_type> > >, prerasterize_type>::type
   PreRasterHelper( BBox2i const& bbox, T1 const& tx1, T2 const& tx2 ) const {
     // General Case
     ImageView<DPixelT> disparity_preraster( crop( m_disparity_map, bbox ) );
@@ -229,9 +227,7 @@ private:
   }
 
   template <class T1, class T2>
-  typename boost::enable_if< boost::mpl::and_<boost::is_same<T1,StereoSessionDGMapRPC::left_tx_type>,
-                                              boost::is_same<T2,StereoSessionDGMapRPC::right_tx_type> >,
-                             prerasterize_type>::type
+  typename boost::enable_if< boost::mpl::or_< boost::mpl::and_<boost::is_same<T1,StereoSessionDGMapRPC::left_tx_type>, boost::is_same<T2,StereoSessionDGMapRPC::right_tx_type> >, boost::mpl::and_<boost::is_same<T1,StereoSessionISISMapISIS::left_tx_type>, boost::is_same<T2,StereoSessionISISMapISIS::right_tx_type> > >, prerasterize_type>::type
   PreRasterHelper( BBox2i const& bbox, T1 const& tx1, T2 const& tx2 ) const {
     // RPC Map Transform needs to be explicitly copied and told to
     // cache for performance.
@@ -309,6 +305,9 @@ Vector3 find_point_cloud_center(Vector2i const& tile_size,
         BBox2i box(x*tile_size[0], y*tile_size[1], tile_size[0], tile_size[1]);
         box.crop(bounding_box(point_cloud));
 
+        // Crop to the cloud area actually having points
+        box.crop(stereo_settings().trans_crop_win);
+        
         // Triangulate in the existing box
         ImageView<Vector6> cropped_cloud = crop(point_cloud, box);
         for (int px = 0; px < cropped_cloud.cols(); px++){
@@ -520,6 +519,7 @@ int main( int argc, char* argv[] ) {
     INSTANTIATE(StereoSessionNadirPinhole,"nadirpinhole");
 #if defined(ASP_HAVE_PKG_ISISIO) && ASP_HAVE_PKG_ISISIO == 1
     INSTANTIATE(StereoSessionIsis,"isis");
+    INSTANTIATE(StereoSessionISISMapISIS,"isismapisis");
 #endif
     INSTANTIATE(StereoSessionRPC,"rpc");
     INSTANTIATE(StereoSessionDG,"dg");

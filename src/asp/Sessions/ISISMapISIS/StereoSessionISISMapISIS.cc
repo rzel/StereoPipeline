@@ -16,21 +16,19 @@
 // __END_LICENSE__
 
 
-/// \file StereoSessionDGMapRPC.cc
+/// \file StereoSessionISISMapISIS.cc
 ///
 #include <asp/Core/StereoSettings.h>
 #include <asp/Core/InterestPointMatching.h>
-#include <asp/Sessions/RPC/RPCModel.h>
-#include <asp/Sessions/RPC/StereoSessionRPC.h>
-#include <asp/Sessions/DGMapRPC/StereoSessionDGMapRPC.h>
-#include <asp/Sessions/DG/XML.h>
+#include <asp/Sessions/ISIS/StereoSessionIsis.h>
+#include <asp/Sessions/ISISMapISIS/StereoSessionISISMapISIS.h>
 
 using namespace vw;
 using namespace asp;
 namespace fs = boost::filesystem;
 
 // Initializer to determine what kind of input we have.
-void StereoSessionDGMapRPC::initialize(BaseOptions const& options,
+void StereoSessionISISMapISIS::initialize(BaseOptions const& options,
                                        std::string const& left_image_file,
                                        std::string const& right_image_file,
                                        std::string const& left_camera_file,
@@ -40,31 +38,46 @@ void StereoSessionDGMapRPC::initialize(BaseOptions const& options,
                                        std::string const& extra_argument1,
                                        std::string const& extra_argument2,
                                        std::string const& extra_argument3 ) {
-  StereoSessionDG::initialize( options, left_image_file,
+  StereoSessionIsis::initialize( options, left_image_file,
                                right_image_file, left_camera_file,
                                right_camera_file, out_prefix,
                                input_dem, extra_argument1,
                                extra_argument2, extra_argument3 );
 
   // Verify that we can read the camera models
-  m_left_model = boost::shared_ptr<RPCModel>(StereoSessionRPC::read_rpc_model(left_image_file, left_camera_file));
-  m_right_model = boost::shared_ptr<RPCModel> (StereoSessionRPC::read_rpc_model(right_image_file, right_camera_file));
+  m_left_model = StereoSessionIsis::camera_model(left_image_file, left_camera_file);
+  m_right_model = StereoSessionIsis::camera_model(right_image_file, right_camera_file);
   VW_ASSERT( m_left_model.get() && m_right_model.get(),
-             ArgumentErr() << "StereoSessionDGMapRPC: Unable to locate RPC inside input files." );
+             ArgumentErr() << "StereoSessionDGMapIsis: Unable to read the ISIS cameras." );
   
   // Double check that we can read the DEM and that it has
   // cartographic information.
   VW_ASSERT( !input_dem.empty(),
-             InputErr() << "StereoSessionDGMapRPC : Require input DEM" );
+             InputErr() << "StereoSessionISISMapISIS : Require input DEM" );
   if ( !fs::exists( input_dem ) )
-    vw_throw( ArgumentErr() << "StereoSessionDGMapRPC: DEM \"" << input_dem
+    vw_throw( ArgumentErr() << "StereoSessionISISMapISIS: DEM \"" << input_dem
               << "\" does not exist." );
 
-  // Verify that center of our lonlat boundaries from the RPC models
+  // Verify that center of our lonlat boundaries from the ISIS models
   // actually projects into the DEM. (?)
 }
 
-bool StereoSessionDGMapRPC::ip_matching( std::string const& match_filename,
+void
+asp::StereoSessionISISMapISIS::pre_preprocessing_hook
+(std::string const& left_input_file,
+ std::string const& right_input_file,
+ std::string & left_output_file,
+ std::string & right_output_file) {
+  
+  // The images are .tif, not .cub, so call the base class preprocessing
+  asp::StereoSession::pre_preprocessing_hook(left_input_file,  
+                                             right_input_file,  
+                                             left_output_file,  
+                                             right_output_file);
+  
+}
+
+bool StereoSessionISISMapISIS::ip_matching( std::string const& match_filename,
                                          double left_nodata_value,
                                          double right_nodata_value ) {
 
@@ -76,11 +89,11 @@ bool StereoSessionDGMapRPC::ip_matching( std::string const& match_filename,
   // safe and cannot operate on randomly accessed pixels, it must be
   // invoked only wholesale on tiles, with each tile getting a copy of
   // that transform.
-  vw_throw( ArgumentErr() << "StereoSessionDGMapRPC: IP matching is not implemented as no alignment is applied to map-projected images.");
+  vw_throw( ArgumentErr() << "StereoSessionISISMapISIS: IP matching is not implemented as no alignment is applied to map-projected images.");
 }
 
-StereoSessionDGMapRPC::left_tx_type
-StereoSessionDGMapRPC::tx_left() const {
+StereoSessionISISMapISIS::left_tx_type
+StereoSessionISISMapISIS::tx_left() const {
   Matrix<double> tx = math::identity_matrix<3>();
   if ( stereo_settings().alignment_method == "homography" ||
        stereo_settings().alignment_method == "affineepipolar" ) {
@@ -113,8 +126,8 @@ StereoSessionDGMapRPC::tx_left() const {
                        HomographyTransform(tx) );
 }
 
-StereoSessionDGMapRPC::right_tx_type
-StereoSessionDGMapRPC::tx_right() const {
+StereoSessionISISMapISIS::right_tx_type
+StereoSessionISISMapISIS::tx_right() const {
   Matrix<double> tx = math::identity_matrix<3>();
   if ( stereo_settings().alignment_method == "homography" ||
        stereo_settings().alignment_method == "affineepipolar" ) {

@@ -520,11 +520,12 @@ AC_CONFIG_FILES([                        \
   src/asp/Sessions/DG/Makefile           \
   src/asp/Sessions/DGMapRPC/Makefile     \
   src/asp/Sessions/ISIS/Makefile         \
-  src/asp/Sessions/Makefile              \
+  src/asp/Sessions/ISISMapISIS/Makefile  \
   src/asp/Sessions/NadirPinhole/Makefile \
   src/asp/Sessions/Pinhole/Makefile      \
   src/asp/Sessions/RPC/Makefile          \
   src/asp/Sessions/tests/Makefile        \
+  src/asp/Sessions/Makefile              \
   src/asp/SpiceIO/Makefile               \
   src/asp/Tools/Makefile                 \
 ])

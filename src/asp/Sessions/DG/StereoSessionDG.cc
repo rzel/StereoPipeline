@@ -184,7 +184,7 @@ namespace asp {
     // Load the unmodified images
     DiskImageView<float> left_disk_image( m_left_image_file ),
       right_disk_image( m_right_image_file );
-
+    
     boost::shared_ptr<camera::CameraModel> left_cam, right_cam;
     camera_models( left_cam, right_cam );
 
@@ -195,7 +195,7 @@ namespace asp {
                                left_nodata_value,
                                right_nodata_value);
   }
-
+  
   StereoSessionDG::left_tx_type
   StereoSessionDG::tx_left() const {
     Matrix<double> tx = math::identity_matrix<3>();
@@ -214,174 +214,6 @@ namespace asp {
       read_matrix( tx, m_out_prefix + "-align-R.exr" );
     }
     return right_tx_type( tx );
-  }
-
-  void StereoSessionDG::pre_preprocessing_hook(std::string const& left_input_file,
-                                               std::string const& right_input_file,
-                                               std::string &left_output_file,
-                                               std::string &right_output_file) {
-
-    boost::shared_ptr<DiskImageResource>
-      left_rsrc( DiskImageResource::open(m_left_image_file) ),
-      right_rsrc( DiskImageResource::open(m_right_image_file) );
-
-    float left_nodata_value, right_nodata_value;
-    get_nodata_values(left_rsrc, right_rsrc, left_nodata_value, right_nodata_value);
-
-    // Load the unmodified images
-    DiskImageView<float> left_disk_image( left_rsrc ), right_disk_image( right_rsrc );
-
-    // Filenames of normalized images
-    left_output_file = m_out_prefix + "-L.tif";
-    right_output_file = m_out_prefix + "-R.tif";
-
-    // If these files already exist, don't bother writting them again.
-    bool rebuild = false;
-    try {
-      vw_log().console_log().rule_set().add_rule(-1,"fileio");
-      DiskImageView<float> test_left(left_output_file);
-      DiskImageView<float> test_right(right_output_file);
-      vw_settings().reload_config();
-    } catch (vw::IOErr const& e) {
-      vw_settings().reload_config();
-      rebuild = true;
-    } catch (vw::ArgumentErr const& e ) {
-      // Throws on a corrupted file.
-      vw_settings().reload_config();
-      rebuild = true;
-    }
-
-    if (!rebuild) {
-      vw_out() << "\t--> Using cached L and R files.\n";
-      return;
-    }
-
-    ImageViewRef< PixelMask<float> > left_masked_image
-      = create_mask_less_or_equal(left_disk_image, left_nodata_value);
-    ImageViewRef< PixelMask<float> > right_masked_image
-      = create_mask_less_or_equal(right_disk_image, right_nodata_value);
-
-    Vector4f left_stats  = gather_stats( left_masked_image,  "left" );
-    Vector4f right_stats = gather_stats( right_masked_image, "right" );
-
-    ImageViewRef< PixelMask<float> > Limg, Rimg;
-    std::string lcase_file = boost::to_lower_copy(m_left_camera_file);
-
-    if ( stereo_settings().alignment_method == "homography" ||
-         stereo_settings().alignment_method == "affineepipolar" ) {
-      std::string match_filename
-        = ip::match_filename(m_out_prefix, left_input_file, right_input_file);
-
-      if (!fs::exists(match_filename)) {
-        // This is calling an internal virtualized method.
-        bool inlier =
-          ip_matching( match_filename,
-                       left_nodata_value,
-                       right_nodata_value );
-        if ( !inlier ) {
-          fs::remove( match_filename );
-          vw_throw( IOErr() << "Unable to match left and right images." );
-        }
-      } else {
-        vw_out() << "\t--> Using cached match file: " << match_filename << "\n";
-      }
-
-      std::vector<ip::InterestPoint> left_ip, right_ip;
-      ip::read_binary_match_file( match_filename, left_ip, right_ip  );
-      Matrix<double> align_left_matrix = math::identity_matrix<3>(),
-        align_right_matrix = math::identity_matrix<3>();
-
-      Vector2i left_size = file_image_size( left_input_file ),
-        right_size = file_image_size( right_input_file );
-
-      if ( stereo_settings().alignment_method == "homography" ) {
-        left_size =
-          homography_rectification( left_size, right_size, left_ip, right_ip,
-                                    align_left_matrix, align_right_matrix );
-        vw_out() << "\t--> Aligning right image to left using matrices:\n"
-                 << "\t      " << align_left_matrix << "\n"
-                 << "\t      " << align_right_matrix << "\n";
-      } else {
-        left_size =
-          affine_epipolar_rectification( left_size, right_size,
-                                         left_ip, right_ip,
-                                         align_left_matrix,
-                                         align_right_matrix );
-        vw_out() << "\t--> Aligning left and right images using affine matrices:\n"
-                 << "\t      " << submatrix(align_left_matrix,0,0,2,3) << "\n"
-                 << "\t      " << submatrix(align_right_matrix,0,0,2,3) << "\n";
-      }
-      write_matrix( m_out_prefix + "-align-L.exr", align_left_matrix );
-      write_matrix( m_out_prefix + "-align-R.exr", align_right_matrix );
-
-      // Applying alignment transform
-      Limg = transform(left_masked_image,
-                       HomographyTransform(align_left_matrix),
-                       left_size.x(), left_size.y() );
-      Rimg = transform(right_masked_image,
-                       HomographyTransform(align_right_matrix),
-                       left_size.x(), left_size.y() );
-    } else if ( stereo_settings().alignment_method == "epipolar" ) {
-      vw_throw( NoImplErr() << "StereoSessionDG does not support epipolar rectification" );
-    } else {
-      // Do nothing just provide the original files.
-      Limg = left_masked_image;
-      Rimg = right_masked_image;
-    }
-
-    // Apply our normalization options.
-    if ( stereo_settings().force_use_entire_range > 0 ) {
-      if ( stereo_settings().individually_normalize > 0 ) {
-        vw_out() << "\t--> Individually normalize images to their respective min max\n";
-        Limg = normalize( Limg, left_stats[0], left_stats[1], 0.0, 1.0 );
-        Rimg = normalize( Rimg, right_stats[0], right_stats[1], 0.0, 1.0 );
-      } else {
-        float low = std::min(left_stats[0], right_stats[0]);
-        float hi  = std::max(left_stats[1], right_stats[1]);
-        vw_out() << "\t--> Normalizing globally to: [" << low << " " << hi << "]\n";
-        Limg = normalize( Limg, low, hi, 0.0, 1.0 );
-        Rimg = normalize( Rimg, low, hi, 0.0, 1.0 );
-      }
-    } else {
-      if ( stereo_settings().individually_normalize > 0 ) {
-        vw_out() << "\t--> Individually normalize images to their respective 4 std dev window\n";
-        Limg = normalize( Limg, left_stats[2] - 2*left_stats[3],
-                          left_stats[2] + 2*left_stats[3], 0.0, 1.0 );
-        Rimg = normalize( Rimg, right_stats[2] - 2*right_stats[3],
-                          right_stats[2] + 2*right_stats[3], 0.0, 1.0 );
-      } else {
-        float low = std::min(left_stats[2] - 2*left_stats[3],
-                             right_stats[2] - 2*right_stats[3]);
-        float hi  = std::max(left_stats[2] + 2*left_stats[3],
-                             right_stats[2] + 2*right_stats[3]);
-        vw_out() << "\t--> Normalizing globally to: [" << low << " " << hi << "]\n";
-        Limg = normalize( Limg, low, hi, 0.0, 1.0 );
-        Rimg = normalize( Rimg, low, hi, 0.0, 1.0 );
-      }
-    }
-
-
-    // The output no-data value must be < 0 as we scale the images to [0, 1].
-    float output_nodata = -32768.0;
-
-    // Enforce no predictor in compression, it works badly with L.tif and R.tif.
-    asp::BaseOptions options = m_options;
-    options.gdal_options["PREDICTOR"] = "1";
-
-    vw_out() << "\t--> Writing pre-aligned images.\n";
-    block_write_gdal_image( left_output_file, apply_mask(Limg, output_nodata),
-                            output_nodata, options,
-                            TerminalProgressCallback("asp","\t  L:  ") );
-
-    if ( stereo_settings().alignment_method == "none" )
-      block_write_gdal_image( right_output_file, apply_mask(Rimg, output_nodata),
-                              output_nodata, options,
-                              TerminalProgressCallback("asp","\t  R:  ") );
-    else
-      block_write_gdal_image( right_output_file,
-                              apply_mask(crop(edge_extend(Rimg, ConstantEdgeExtension()), bounding_box(Limg)), output_nodata),
-                              output_nodata, options,
-                              TerminalProgressCallback("asp","\t  R:  ") );
   }
 
 }

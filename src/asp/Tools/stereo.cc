@@ -307,7 +307,8 @@ namespace asp {
     }
     
     // If images are map-projected, need an input DEM
-    if ( (opt.session->name() == "dg" || opt.session->name() == "dgmaprpc" ) &&
+    if ( (opt.session->name() == "dg"   || opt.session->name() == "dgmaprpc" ||
+          opt.session->name() == "isis" || opt.session->name() == "isismapisis") &&
          has_georef1 && has_georef2 && opt.input_dem.empty() ) {
       vw_out(WarningMessage) << "It appears that the input images are "
                              << "map-projected. In that case a DEM needs to be "
@@ -315,13 +316,15 @@ namespace asp {
     }
 
     // We did not implement stereo using map-projected images with dem
-    // on anything except "dg" and "dgmaprpc" sessions.
-    if ( !opt.input_dem.empty() && opt.session->name() != "dg"
-         && opt.session->name() != "dgmaprpc" ) {
+    // on anything except "dg", "dgmaprpc", "isis", and "isismapisis" sessions.
+    if ( !opt.input_dem.empty() &&
+         opt.session->name() != "dg" && opt.session->name() != "dgmaprpc"      &&
+         opt.session->name() != "isis" && opt.session->name() != "isismapisis"
+         ) {
       vw_throw( ArgumentErr() << "Cannot use map-projected images with "
                 << "a session of type: " << opt.session->name() << ".\n");
     }
-
+    
     // No alignment must be set for map-projected images.
     if ( stereo_settings().alignment_method != "none" && !opt.input_dem.empty() ) {
       vw_throw( ArgumentErr()
@@ -330,7 +333,8 @@ namespace asp {
     }
     
     // Ensure that we are not accidentally doing stereo with
-    // images map-projected with other camera model than 'rpc'.
+    // images map-projected with other camera model than 'rpc' for dg
+    // and isis for isis.
     if (!opt.input_dem.empty()){
       
       std::string cam_tag = "CAMERA_MODEL_TYPE";
@@ -341,15 +345,18 @@ namespace asp {
       boost::shared_ptr<vw::DiskImageResource> r_rsrc
         ( new vw::DiskImageResourceGDAL(opt.in_file2) );
       vw::cartography::read_header_string(*r_rsrc.get(), cam_tag, r_cam_type);
-        
-      if ( (l_cam_type != "" && l_cam_type != "rpc")
-           ||
-           (r_cam_type != "" && r_cam_type != "rpc")             
-           ){
+
+      std::string expected_type;
+      if ( (opt.session->name() == "dg" || opt.session->name() == "dgmaprpc"))
+        expected_type = "rpc";
+      if ( (opt.session->name() == "isis" || opt.session->name() == "isismapisis"))
+        expected_type = "isis";
+      
+      if ( (l_cam_type != "" && l_cam_type != expected_type) ||
+           (r_cam_type != "" && r_cam_type != expected_type) )
         vw_throw( ArgumentErr()
                   << "The images were map-projected with another option "
-                  << "than -t rpc.\n");
-      }
+                  << "than -t " << expected_type << ".\n");
       
     }
     

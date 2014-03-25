@@ -20,30 +20,7 @@
 # sources
 #########################################################################
 
-if MAKE_MODULE_SESSIONS
-
-include_HEADERS = StereoSession.h
-
-libaspSessions_la_SOURCES = StereoSession.cc                            \
-Pinhole/StereoSessionPinhole.cc DG/StereoSessionDG.cc DG/XMLBase.cc     \
-DG/XML.cc RPC/StereoSessionRPC.cc RPC/RPCStereoModel.cc                 \
-RPC/RPCModel.cc RPC/RPCModelGen.cc                                      \
-NadirPinhole/StereoSessionNadirPinhole.cc DGMapRPC/StereoSessionDGMapRPC.cc
-
-libaspSessions_la_LIBADD = @MODULE_SESSIONS_LIBS@
-
-lib_LTLIBRARIES = libaspSessions.la
-
-SUBDIRS = . NadirPinhole Pinhole DG DGMapRPC tests
-
-if HAVE_PKG_ISIS
-libaspSessions_la_SOURCES += ISIS/StereoSessionIsis.cc   \
-ISIS/PhotometricOutlier.cc ISISMapISIS/StereoSessionISISMapISIS.cc
-SUBDIRS += ISIS ISISMapISIS
-endif
-
-
-endif
+include_HEADERS = StereoSessionISISMapISIS.h
 
 #########################################################################
 # general
@@ -52,6 +29,6 @@ endif
 AM_CPPFLAGS = @ASP_CPPFLAGS@
 AM_LDFLAGS = @ASP_LDFLAGS@ -version-info @LIBTOOL_VERSION@
 
-includedir = $(prefix)/include/asp/Sessions
+includedir = $(prefix)/include/asp/Sessions/ISISMapISIS
 
 include $(top_srcdir)/config/rules.mak
