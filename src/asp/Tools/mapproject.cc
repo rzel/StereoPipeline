@@ -58,7 +58,7 @@ void handle_arguments( int argc, char *argv[], Options& opt ) {
     ("nodata-value",     po::value(&opt.nodata_value)->default_value(-32768),
      "No-data value to use unless specified in the input image.")
     ("t_srs",            po::value(&opt.target_srs_string)->default_value(""),
-     "Specify the projection (PROJ.4 string). If not provided, use the one from the DEM.")
+     "Specify the output projection (PROJ.4 string). If not provided, use the one from the DEM.")
     ("tr",               po::value(&opt.target_resolution)->default_value(NaN),
      "Set the output file resolution in target georeferenced units per pixel.")
     ("mpp",              po::value(&opt.mpp)->default_value(NaN),
@@ -75,7 +75,7 @@ void handle_arguments( int argc, char *argv[], Options& opt ) {
      "Limit the map-projected image to this region, with the corners given in pixels (xmin ymin xmax ymax). Max is exclusive.")
     ("bundle-adjust-prefix", po::value(&opt.bundle_adjust_prefix),
      "Use the camera adjustment obtained by previously running bundle_adjust with this output prefix.");
-    
+
   general_options.add( asp::BaseOptionsDescription(opt) );
 
   po::options_description positional("");
@@ -104,7 +104,7 @@ void handle_arguments( int argc, char *argv[], Options& opt ) {
 
   // We support map-projecting using the DG camera model, however, these images
   // cannot be used later to do stereo, as that process expects the images
-  // to be map-projected using the RPC model. 
+  // to be map-projected using the RPC model.
   if (boost::to_lower_copy(opt.stereo_session) == "dg"){
     vw_out(WarningMessage) << "Images map-projected using the 'dg' camera model cannot be used later to run stereo with the 'dg' session. If that is desired, please specify here the 'rpc' camera model instead.\n";
   }
@@ -113,7 +113,7 @@ void handle_arguments( int argc, char *argv[], Options& opt ) {
        opt.stereo_session == "" ){
     opt.stereo_session = "rpc";
   }
-  
+
 }
 
 template <class ImageT>
@@ -189,7 +189,7 @@ void calc_target_geom(// Inputs
   }
 
   // Use auto-calculated ground resolution if that option was selected
-  if (calc_target_res) 
+  if (calc_target_res)
     opt.target_resolution = auto_res;
 
   // If an image bounding box (projected coordinates) was passed in,
@@ -279,7 +279,7 @@ int main( int argc, char* argv[] ) {
 #if ASP_HAVE_PKG_VW_BUNDLEADJUSTMENT
     std::string ba_pref = opt.bundle_adjust_prefix;
     if (ba_pref != ""){
-      
+
       // If the user has generated a set of position and pose
       // corrections using the bundle_adjust program, we read them in
       // here and incorporate them into our camera model.
@@ -302,7 +302,7 @@ int main( int argc, char* argv[] ) {
                  adjust_file << ".\n");
     }
 #endif
-      
+
     // Safety check that the users are not trying to map project map projected images.
     {
       GeoReference dummy_georef;
@@ -318,9 +318,9 @@ int main( int argc, char* argv[] ) {
     bool has_georef = read_georeference(dem_georef, opt.dem_file);
     if (!has_georef)
       vw_throw( ArgumentErr() << "There is no georeference information in: " << opt.dem_file << ".\n" );
-    
+
     boost::shared_ptr<DiskImageResource> dem_rsrc(DiskImageResource::open(opt.dem_file));
-    
+
     // If we have a nodata value, create a mask.
     DiskImageView<float> dem_disk_image(opt.dem_file);
     if (dem_rsrc->has_nodata_read()){
@@ -379,9 +379,9 @@ int main( int argc, char* argv[] ) {
 
     // Second pass
     first_pass = false;
-    
+
     // Transformed view indexes DEM based on target georeference
-    ImageViewRef<PMaskT> trans_dem 
+    ImageViewRef<PMaskT> trans_dem
       = geo_transform(dem, dem_georef, target_georef,
                       ValueEdgeExtension<PMaskT>(PMaskT()),
                       BilinearInterpolation());
@@ -397,7 +397,7 @@ int main( int argc, char* argv[] ) {
     // Compute output image size in pixels using bounding box in output projected space
     BBox2i target_image_size = target_georef.point_to_pixel_bbox( cam_box );
     target_image_size.min() = Vector2(0, 0); // we count on this transform_nodata
-    
+
     vw_out() << "Cropping to projected coordinates: " << cam_box << std::endl;
 
     // Shrink output image BB if an output image BB was passed in
@@ -420,12 +420,12 @@ int main( int argc, char* argv[] ) {
       vw_out() << "Query finished, exiting mapproject tool.\n";
       return 0;
     }
-    
+
 
     // Create handle to input image to be projected on to the map
     boost::shared_ptr<DiskImageResource>
       img_rsrc( DiskImageResource::open( opt.image_file ) );
-    
+
     // Write the output image. Use the nodata passed in by the user
     // if it is not available in the input file.
     if (img_rsrc->has_nodata_read()) opt.nodata_value = img_rsrc->nodata_read();
@@ -461,7 +461,7 @@ int main( int argc, char* argv[] ) {
        croppedGeoRef, has_img_nodata, opt.nodata_value, opt,
        TerminalProgressCallback("","")
        );
-    
+
   } ASP_STANDARD_CATCHES;
 
   return 0;

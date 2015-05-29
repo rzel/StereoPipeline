@@ -75,6 +75,7 @@ namespace asp {
     std::map<int, int> col2sort;
     int lon_index, lat_index;
     std::string csv_format_str;
+    std::string csv_proj4_str;
     CsvFormat format;
     int utm_zone;
     bool utm_north;
@@ -89,7 +90,9 @@ namespace asp {
                          vw::cartography::GeoReference const& csv_georef,
                          asp::CsvConv const& csv_conv);
 
-  void parse_csv_format(std::string const& csv_format_str, CsvConv & C);
+  void parse_csv_format(std::string const& csv_format_str,
+                        std::string const& csv_proj4_str,
+                        CsvConv & C);
 
   vw::Vector3 parse_csv_line(bool & is_first_line, bool & success,
                              std::string const& line,

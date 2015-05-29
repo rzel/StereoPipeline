@@ -416,7 +416,9 @@ void asp::parse_utm_str(std::string const& utm, int & zone, bool & north){
     vw_throw(ArgumentErr() << "Could not parse UTM string: '" << utm << "'\n");
 }
 
-void asp::parse_csv_format(std::string const& csv_format_str, asp::CsvConv & C){
+void asp::parse_csv_format(std::string const& csv_format_str,
+                           std::string const& csv_proj4_str,
+                           asp::CsvConv & C){
 
   // Parse the CSV format string and build the data structure which
   // will enable to convert from CSV to Cartesian and vice-versa.
@@ -424,6 +426,7 @@ void asp::parse_csv_format(std::string const& csv_format_str, asp::CsvConv & C){
   C = asp::CsvConv(); // reset
 
   C.csv_format_str = csv_format_str;
+  C.csv_proj4_str = csv_proj4_str;
 
   std::string local = csv_format_str;
   boost::algorithm::to_lower(local);
@@ -504,11 +507,10 @@ void asp::parse_csv_format(std::string const& csv_format_str, asp::CsvConv & C){
             sorted_names[2] == "radius_km"){
     C.format = asp::LAT_LON_RADIUS_KM;
   }else if (sorted_names[0] == "height_above_datum" &&
-            sorted_names[1] == "lat" &&
+            sorted_names[1] == "lat"                &&
             sorted_names[2] == "lon"){
     C.format = asp::HEIGHT_LAT_LON;
-  }else if (C.utm_zone >= 0 &&
-            sorted_names[0] == "easting" &&
+  }else if (sorted_names[0] == "easting"            &&
             sorted_names[1] == "height_above_datum" &&
             sorted_names[2] == "northing"){
     C.format = asp::EASTING_HEIGHT_NORTHING;

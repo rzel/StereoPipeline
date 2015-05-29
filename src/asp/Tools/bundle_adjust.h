@@ -1203,7 +1203,7 @@ public:
 
   // Get pinhole model from its internal representation of arrays
   // used for optimization.
-  vw::camera::PinholeModel2 get_pinhole_model(camera_intr_vector_t const& a_j){
+  vw::camera::PinholeModel get_pinhole_model(camera_intr_vector_t const& a_j){
 
     camera_intr_vector_t b = a_j;
 
@@ -1214,7 +1214,7 @@ public:
     vw::Quat pose;
     asp::get_cam_params(b, position, pose);
 
-    return vw::camera::PinholeModel2(position,
+    return vw::camera::PinholeModel(position,
                                     pose.rotation_matrix(),
                                     b[6], b[6],  // focal lengths
                                     b[7], b[8]); // pixel offsets
@@ -1223,7 +1223,7 @@ public:
   // Copy pinhole models into arrays used for optimization.
   // This reverses the process in get_pinhole_model().
 
-  void put_pinhole_model(vw::camera::PinholeModel2 & model,
+  void put_pinhole_model(vw::camera::PinholeModel & model,
                          camera_intr_vector_t & a_j){
 
     vw::Vector3 position = model.camera_center();
@@ -1247,8 +1247,8 @@ public:
               vw::ArgumentErr() << "Book-keeping error in number of cameras.\n");
     int num_cams = a.size();
     for (int icam = 0; icam < num_cams; icam++){
-      vw::camera::PinholeModel2 * pincam
-        = dynamic_cast<vw::camera::PinholeModel2*>(cameras[icam].get());
+      vw::camera::PinholeModel * pincam
+        = dynamic_cast<vw::camera::PinholeModel*>(cameras[icam].get());
       VW_ASSERT(pincam != NULL,
                 vw::ArgumentErr() << "A pinhole camera expected.\n");
 
@@ -1262,8 +1262,8 @@ public:
               vw::ArgumentErr() << "Book-keeping error in number of cameras.\n");
     int num_cams = a.size();
     for (int icam = 0; icam < num_cams; icam++){
-      vw::camera::PinholeModel2 * pincam
-        = dynamic_cast<vw::camera::PinholeModel2*>(cameras[icam].get());
+      vw::camera::PinholeModel * pincam
+        = dynamic_cast<vw::camera::PinholeModel*>(cameras[icam].get());
       VW_ASSERT(pincam != NULL,
                 vw::ArgumentErr() << "A pinhole camera expected.\n");
 

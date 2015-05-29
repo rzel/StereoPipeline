@@ -328,7 +328,7 @@ SESSIONS
  - Added RPC processing session.
  - DG sessions now use bicubic interpolation for map projection arithmetic.
  - Fixed bug in case where DG XML file had single TLC entry.
- - DG sessions now applies velocity abberation corrections.
+ - DG sessions now applies velocity aberration corrections.
 
 TOOLS
  - Have point2dem use correct nodata value when writting DRGs.
