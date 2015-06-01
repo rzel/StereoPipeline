@@ -39,31 +39,6 @@ namespace asp {
 
   class BaseOptions;
 
-  bool is_las(std::string const& file);
-  bool is_csv(std::string const& file);
-  bool is_las_or_csv(std::string const& file);
-
-  bool georef_from_las(std::string const& las_file,
-                       vw::cartography::GeoReference & georef);
-
-  bool georef_from_las(std::vector<std::string> const& files,
-                       vw::cartography::GeoReference & georef);
-
-  boost::uint64_t las_file_size(std::string const& las_file);
-
-  bool read_user_datum(double semi_major, double semi_minor,
-                       std::string const& reference_spheroid,
-                       vw::cartography::Datum& datum );
-
-  void parse_utm_str(std::string const& utm, int & zone, bool & north);
-
-  inline std::string csv_separator(){ return ", \t"; }
-
-  // Need this for pc_align and point2dem
-  inline std::string csv_opt_caption(){
-    return "Specify the format of input CSV files as a list of entries column_index:column_type (indices start from 1). Examples: '1:x 2:y 3:z', '5:lon 6:lat 7:radius_m', '3:lat 2:lon 1:height_above_datum', 'utm:47N 1:easting 2:northing 3:height_above_datum'. Can also use radius_km for column_type.";
-  }
-
   // Utilities for processing csv files
   enum CsvFormat{
     XYZ, HEIGHT_LAT_LON, LAT_LON_RADIUS_M,
@@ -82,6 +57,34 @@ namespace asp {
     CsvConv():lon_index(-1), lat_index(-1), format(XYZ), utm_zone(-1),
               utm_north(false){}
   };
+
+  bool is_las(std::string const& file);
+  bool is_csv(std::string const& file);
+  bool is_las_or_csv(std::string const& file);
+
+  bool georef_from_las(std::string const& las_file,
+                       vw::cartography::GeoReference & georef);
+
+  bool georef_from_las(std::vector<std::string> const& files,
+                       vw::cartography::GeoReference & georef);
+
+  boost::uint64_t las_file_size(std::string const& las_file);
+
+  bool read_user_datum(double semi_major, double semi_minor,
+                       std::string const& reference_spheroid,
+                       vw::cartography::Datum& datum );
+
+  void handle_easting_northing(asp::CsvConv const& csv_conv,
+                               vw::cartography::GeoReference & georef);
+
+  void parse_utm_str(std::string const& utm, int & zone, bool & north);
+
+  inline std::string csv_separator(){ return ", \t"; }
+
+  // Need this for pc_align and point2dem
+  inline std::string csv_opt_caption(){
+    return "Specify the format of input CSV files as a list of entries column_index:column_type (indices start from 1). Examples: '1:x 2:y 3:z', '5:lon 6:lat 7:radius_m', '3:lat 2:lon 1:height_above_datum', '1:easting 2:northing 3:height_above_datum' (need to set --csv-proj4). Can also use radius_km for column_type.";
+  }
 
   void las_or_csv_to_tif(std::string const& in_file,
                          std::string const& out_file,

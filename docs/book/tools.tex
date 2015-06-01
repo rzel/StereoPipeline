@@ -531,13 +531,17 @@ It is expected that the input LAS files have spatial reference
 information such as WKT data. Otherwise it is assumed that the points
 are raw $x,y,z$ values in meters in reference to the planet center.
 
-Unless the output projection is explicitly set when invoking \texttt{point2dem}
+Unless the output projection is explicitly set when invoking \texttt{point2dem},
 the one from the first LAS file will be used.
 
 For LAS or CSV clouds it is not possible to generate intersection error
 maps or ortho images.
 
-For CSV clouds the option \texttt{-\/-csv-format} must be set. The option \texttt{-\/-csv-proj4} can be used to set a custom PROJ.4 string for reading the CSV data.
+For CSV point clouds the option \texttt{-\/-csv-format} must be set. If
+such a cloud contains easting, northing and height above datum, the
+option \texttt{-\/-csv-proj4} need to be set to interpret this data. If
+this option is set, it will also be used for output DEMs, unless the
+option \texttt{-\/-t\_srs} is specified.
 
 \begin{longtable}{|p{8cm}|p{9cm}|}
 \caption{Command-line options for point2dem}
@@ -580,8 +584,22 @@ Options & Description \\ \hline \hline
 \texttt{-\/-proj-scale \textit{float}} & The projection scale (if applicable). \\ \hline
 \texttt{-\/-dem-spacing|-s \textit{float(=0)}} & Set the output DEM resolution (in target georeferenced units per pixel). If not specified, it will be computed automatically (except for LAS and CSV files). \\ \hline
 \texttt{-\/-search-radius-factor \textit{float(=$0$)}} & Multiply this factor by \texttt{dem-spacing} to get the search radius. The DEM height at a given grid point is obtained as a weighted average of heights of all points in the cloud within search radius of the grid point, with the weights given by a Gaussian. Default search radius: max(\texttt{dem-spacing}, default\_dem\_spacing), so the default factor is about 1.\\ \hline
-\texttt{-\/-csv-format \textit{string}} & Specify the format of input CSV files as a list of entries column\_index:column\_type (indices start from 1). Examples: '1:x 2:y 3:z' (a Cartesian coordinate system with origin at planet center is assumed, with the units being in meters), '5:lon 6:lat 7:radius\_m' (longitude and latitude are in degrees, the radius is measured in meters from planet center), '3:lat 2:lon 1:height\_above\_datum', 'utm:47N 1:easting 2:northing 3:height\_above\_datum' (the height above datum is in meters). Can also use radius\_km for column\_type, when it is again measured from planet center. \\ \hline
-\texttt{-\/-csv-proj4 \textit{string}} & The PROJ.4 string to use to interpret the entries in input CSV files. \\ \hline
+
+\texttt{-\/-csv-format \textit{string}} & Specify the format of input
+CSV files as a list of entries column\_index:column\_type (indices start
+from 1). Examples: '1:x 2:y 3:z' (a Cartesian coordinate system with
+origin at planet center is assumed, with the units being in meters),
+'5:lon 6:lat 7:radius\_m' (longitude and latitude are in degrees, the
+radius is measured in meters from planet center), '3:lat 2:lon
+1:height\_above\_datum', '1:easting 2:northing 3:height\_above\_datum'
+(need to set \texttt{-\/-csv-proj4}; the height above datum is in
+meters). Can also use radius\_km for column\_type, when it is again
+measured from planet center. \\ \hline
+
+\texttt{-\/-csv-proj4 \textit{string}} & The PROJ.4 string to use to
+interpret the entries in input CSV files, if those entries contain
+easting, northing, and height above datum. \\ \hline
+
 \texttt{-\/-rounding-error \textit{float(=$1/2^{10}$=$0.0009765625$)}} & How much to round the output DEM and errors, in meters (more rounding means less precision but potentially smaller size on disk). The inverse of a power of 2 is suggested. \\ \hline
 \texttt{-\/-dem-hole-fill-len \textit{int(=0)}} &  Maximum dimensions of a hole in the output DEM to fill in, in pixels. \\ \hline
 \texttt{-\/-orthoimage-hole-fill-len \textit{int(=0)}} & Maximum dimensions of a hole in the output orthoimage to fill in, in pixels. \\ \hline
@@ -1146,20 +1164,20 @@ time, but may result in better alignment at the expense of using more
 memory and processing time.
 
 The input point clouds can be in one of several formats: ASP's point
-cloud format, DEMs as GeoTIFF or ISIS cub files, LAS files,
-or plain-text CSV files (with .csv
-or .txt extension). By default, CSV files are expected to have on each
-line the latitude and longitude (in degrees), and the height above the
-datum (in meters), separated by commas or spaces with an optional
-header line. Alternatively, the user can specify the format of the CSV
-file via the \texttt{-\/-csv-format} option. Entries in the CSV file can
-then be (in any order) (a) longitude, latitude (in degrees), height
-above datum (in meters), (b) longitude, latitude, distance from planet
-center (in meters or km), (c) easting, northing and height above datum
-(in meters), in this case either the PROJ.4 string must be set via \texttt{-\/-csv-proj4}, or the UTM zone must be specified, (d) Cartesian coordinates $(x, y, z)$
-measured from planet center (in meters). The precise syntax is described
-in the table below. The tool can also auto-detect the LOLA RDR
-PointPerRow format.
+cloud format, DEMs as GeoTIFF or ISIS cub files, LAS files, or
+plain-text CSV files (with .csv or .txt extension). By default, CSV
+files are expected to have on each line the latitude and longitude (in
+degrees), and the height above the datum (in meters), separated by
+commas or spaces with an optional header line. Alternatively, the user
+can specify the format of the CSV file via the \texttt{-\/-csv-format}
+option. Entries in the CSV file can then be (in any order) (a)
+longitude, latitude (in degrees), height above datum (in meters), (b)
+longitude, latitude, distance from planet center (in meters or km), (c)
+easting, northing and height above datum (in meters), in this case
+a PROJ.4 string must be set via \texttt{-\/-csv-proj4}, (d)
+Cartesian coordinates $(x, y, z)$ measured from planet center (in
+meters). The precise syntax is described in the table below. The tool
+can also auto-detect the LOLA RDR PointPerRow format.
 
 If none of the input files are a DEM from which the datum can be
 inferred, and the input files are not in Cartesian coordinates, the
@@ -1267,17 +1285,21 @@ method to use. [point-to-plane, point-to-point]\\ \hline
 \texttt{-\/-semi-major-axis \textit{float}} & Explicitly set the datum semi-major axis in meters.\\ \hline
 \texttt{-\/-semi-minor-axis \textit{float}} & Explicitly set the datum semi-minor axis in meters.\\ \hline
 
-\texttt{-\/-csv-format \textit{string}} & Specify the format of input (and
-output) CSV files as a list of entries column\_index:column\_type
-(indices start from 1). Examples: '1:x 2:y 3:z' (a Cartesian coordinate
-system with origin at planet center is assumed, with the units being in
-meters), '5:lon 6:lat 7:radius\_m' (longitude and latitude are in
-degrees, the radius is measured in meters from planet center), '3:lat
-2:lon 1:height\_above\_datum', 'utm:47N 1:easting 2:northing
-3:height\_above\_datum' (the height above datum is in meters). Can also
-use radius\_km for column\_type, when it is again measured from planet
-center. \\ \hline
-\texttt{-\/-csv-proj4 \textit{string}} & The PROJ.4 string to use to interpret the entries in input CSV files. \\ \hline
+\texttt{-\/-csv-format \textit{string}} & Specify the format of input
+CSV files as a list of entries column\_index:column\_type (indices start
+from 1). Examples: '1:x 2:y 3:z' (a Cartesian coordinate system with
+origin at planet center is assumed, with the units being in meters),
+'5:lon 6:lat 7:radius\_m' (longitude and latitude are in degrees, the
+radius is measured in meters from planet center), '3:lat 2:lon
+1:height\_above\_datum', '1:easting 2:northing 3:height\_above\_datum'
+(need to set \texttt{-\/-csv-proj4}; the height above datum is in
+meters). Can also use radius\_km for column\_type, when it is again
+measured from planet center. \\ \hline
+
+\texttt{-\/-csv-proj4 \textit{string}} & The PROJ.4 string to use to
+interpret the entries in input CSV files, if those entries contain
+easting, northing, and height above datum. \\ \hline
+
 \texttt{-\/-config-file \textit{file.yaml}} & This is an advanced
 option. Read the alignment parameters from a configuration file, in the
 format expected by libpointmatcher, over-riding the command-line options.\\ \hline

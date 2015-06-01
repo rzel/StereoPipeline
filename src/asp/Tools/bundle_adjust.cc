@@ -185,7 +185,7 @@ init_optimization_vars(ModelT & ba_model, Options & opt,
     std::cout << "pinhole model2 is " << *pincam << std::endl;
 
     typename ModelT::camera_intr_vector_t b;
-    ba_model.put_pinhole_model(*pincam, b);
+    ba_model.to_internal(*pincam, b);
 
     for (size_t q = 0; q < num_camera_params; q++)
       cameras_vec[icam*num_camera_params + q] = b[q];
@@ -709,7 +709,6 @@ add_residual_block(ModelT & ba_model,
   problem.AddResidualBlock(cost_function, loss_function, camera,
                            point, intrinsics);
   problem.SetParameterBlockConstant(&intrinsics[0]);
-  std::cout << "---fixing intrinsics!!!" << std::endl;
 
   //std::cout << "--not fixing intrinsics!!!" << std::endl;
 //   std::cout << "--obs pix is " << observation << ' ' << pixel_sigma << std::endl;
@@ -743,7 +742,7 @@ void do_ba_ceres(ModelT & ba_model, Options& opt ){
   std::vector<double> intrinsics_vec(num_intrinsic_params, 0.0);
 
   if (!opt.have_input_cams)
-    init_optimization_vars(ba_model, opt, cameras_vec,  intrinsics_vec);
+    init_optimization_vars(ba_model, opt, cameras_vec, intrinsics_vec);
 
   // Camera extrinsics and intrinsics
   double* cameras = &cameras_vec[0];
@@ -1246,13 +1245,14 @@ int main(int argc, char* argv[]) {
     Vector2i left_size = asp::file_image_size(opt.image_files[0]);
     Vector2i right_size = asp::file_image_size(opt.image_files[1]);
 
-    //double fov = 80.0 * 2*M_PI/360.0; // field of view in radians
+    //double fov = atof(getenv("A")) * 2*M_PI/360.0; // field of view in radians
+    double fov = 80.0 * 2*M_PI/360.0; // field of view in radians
 
     // Use l=46; w=23; f=30.5; a=2*(180/pi)*atan(sqrt(l^2+w^2)/2/f)
     //double fov = 80.2690 * 2*M_PI/360.0; // field of view in radians
 
     // Use l=129; w=259; f=170;  a=2*(180/pi)*atan(sqrt(l^2+w^2)/2/f)
-    double fov = 80.7970 * 2*M_PI/360.0; // field of view in radians
+    //double fov = 80.7970 * 2*M_PI/360.0; // field of view in radians
 
     // Should we use below first dimension, second dimension, or diagonal?
     double L = norm_2( (left_size + right_size)/2.0 ); // diagonal
@@ -1265,7 +1265,7 @@ int main(int argc, char* argv[]) {
     std::cout << "input image center: " << V << std::endl;
 
     double rad = 6378137;
-    double extra = 170000;
+    double extra = 200000;
     for (int icam = 0; icam < num_cams; icam++){
       vw::camera::PinholeModel * pincam
         = dynamic_cast<vw::camera::PinholeModel*>(opt.camera_models[icam].get());
@@ -1371,196 +1371,203 @@ int main(int argc, char* argv[]) {
     if (!opt.have_input_cams && !have_pinhole)
       update_cnet_and_init_cams(opt, *opt.cnet);
 
-    for (int iter = 0; iter < 5; iter++) {
+    //     int max_iter = 5;
+    //     for (int iter = 0; iter < max_iter; iter++) {
 
-      do_ba_ceres<BAPinholeModel>(ba_model, opt);
+    do_ba_ceres<BAPinholeModel>(ba_model, opt);
+    ba_model.from_internal(opt.camera_models);
 
-      // Now is the right time to add the gcp
-      std::cout << "---cnet size " << (int)cnet.size() << std::endl;
-      if (iter == 0 && !opt.have_input_cams) {
-        std::cout << "--adding control points!!!" << std::endl;
-        add_ground_control_points( (*opt.cnet), opt.image_files,
-                                   opt.gcp_files.begin(), opt.gcp_files.end(),
-                                   opt.datum);
-      }
-      std::cout << "--cnet size " << (int)cnet.size() << std::endl;
+//     ba_model.to_internal(opt.camera_models);
+//     ba_model.from_inernal(opt.camera_models);
 
-      ba_model.get_pinhole_models(opt.camera_models);
+    // Now is the right time to add the gcp
+    std::cout << "---cnet size " << (int)cnet.size() << std::endl;
+    if (!opt.have_input_cams) {
+      std::cout << "--adding control points!!!" << std::endl;
+      add_ground_control_points( (*opt.cnet), opt.image_files,
+                                 opt.gcp_files.begin(), opt.gcp_files.end(),
+                                 opt.datum);
+    }
+    std::cout << "--cnet size " << (int)cnet.size() << std::endl;
+
+//     ba_model.from_internal(opt.camera_models);
 #if 1
-      // Use GCP to transform the cameras to the correct coordinate system
+    // Use GCP to transform the cameras to the correct coordinate system
 
-      for (size_t icam = 0; icam < opt.camera_models.size(); icam++){
-        vw::camera::PinholeModel * pincam
-          = dynamic_cast<vw::camera::PinholeModel*>(opt.camera_models[icam].get());
-        VW_ASSERT(pincam != NULL,
-                  vw::ArgumentErr() << "A pinhole camera expected.\n");
+    for (size_t icam = 0; icam < opt.camera_models.size(); icam++){
+      vw::camera::PinholeModel * pincam
+        = dynamic_cast<vw::camera::PinholeModel*>(opt.camera_models[icam].get());
+      VW_ASSERT(pincam != NULL,
+                vw::ArgumentErr() << "A pinhole camera expected.\n");
 
-        std::cout << "---before rotation, camera is " << *pincam << std::endl;
+      std::cout << "---before rotation, camera is " << *pincam << std::endl;
+    }
+
+
+    int num_gcp = 0;
+    for (int ipt = 0; ipt < (int)cnet.size(); ipt++){
+      if (cnet[ipt].type() != ControlPoint::GroundControlPoint) continue;
+      num_gcp++;
+    }
+    Eigen::Matrix3Xd in(3, num_gcp), out(3, num_gcp);
+    int num_good_gcp = 0;
+    for (int ipt = 0; ipt < (int)cnet.size(); ipt++){
+      if (cnet[ipt].type() != ControlPoint::GroundControlPoint) continue;
+
+      ControlPoint cp_new = cnet[ipt];
+      // Making minimum_angle below big may throw away valid points at this stage
+      // really???
+      double minimum_angle = 0;
+      vw::ba::triangulate_control_point(cp_new,
+                                        opt.camera_models,
+                                        minimum_angle);
+      Vector3 inp = cp_new.position();
+      Vector3 outp  = cnet[ipt].position();
+      //std::cout << "---triangulated: " << cnet[ipt].position() << ' '
+      //          << cp_new.position() << std::endl;
+      if (inp == Vector3() || outp == Vector3())
+        continue;
+
+      in.col(num_good_gcp)  << inp[0], inp[1], inp[2];
+      out.col(num_good_gcp) << outp[0], outp[1], outp[2];
+      //std::cout << "--in is " << in.col(num_good_gcp).transpose() << std::endl;
+      //std::cout << "--ou is " << out.col(num_good_gcp).transpose() << std::endl;
+      num_good_gcp++;
+    }
+
+    in.conservativeResize(Eigen::NoChange_t(), num_good_gcp);
+    out.conservativeResize(Eigen::NoChange_t(), num_good_gcp);
+    std::cout << "---must check here that we have at least 3 points!!!"
+              << std::endl;
+
+    Eigen::Affine3d T = Find3DAffineTransform(in, out);
+    double scale = pow(T.linear().determinant(), 1.0 / 3.0);
+
+    std::cout << "--det is " << T.linear().determinant() << std::endl;
+    std::cout << "Transform to world coordinates." << std::endl;
+    std::cout << "Rotation:\n" << T.linear() / scale << std::endl;
+    std::cout << "Scale:\n" << scale << std::endl;
+    std::cout << "Translation:\n" << T.translation().transpose()
+              << std::endl;
+
+    // Represent the transform as y = scale*A*x + b
+    Eigen::MatrixXd eA = T.linear()/scale;
+    Eigen::Vector3d eb = T.translation();
+
+    // Store in VW matrices and vectors
+    vw::Matrix3x3 A;
+    for (size_t r = 0; r < A.rows(); r++) {
+      for (size_t c = 0; c < A.cols(); c++) {
+        A(r, c) = eA(r, c);
       }
-
-      int num_gcp = 0;
-      for (int ipt = 0; ipt < (int)cnet.size(); ipt++){
-        if (cnet[ipt].type() != ControlPoint::GroundControlPoint) continue;
-        num_gcp++;
-      }
-      Eigen::Matrix3Xd in(3, num_gcp), out(3, num_gcp);
-      int num_good_gcp = 0;
-      for (int ipt = 0; ipt < (int)cnet.size(); ipt++){
-        if (cnet[ipt].type() != ControlPoint::GroundControlPoint) continue;
-
-        ControlPoint cp_new = cnet[ipt];
-        // Making minimum_angle below big may throw away valid points at this stage
-        // really???
-        double minimum_angle = 0;
-        vw::ba::triangulate_control_point(cp_new,
-                                          opt.camera_models,
-                                          minimum_angle);
-        Vector3 inp = cp_new.position();
-        Vector3 outp  = cnet[ipt].position();
-        //std::cout << "---triangulated: " << cnet[ipt].position() << ' '
-        //          << cp_new.position() << std::endl;
-        if (inp == Vector3() || outp == Vector3())
-          continue;
-
-        in.col(num_good_gcp)  << inp[0], inp[1], inp[2];
-        out.col(num_good_gcp) << outp[0], outp[1], outp[2];
-        //std::cout << "--in is " << in.col(num_good_gcp).transpose() << std::endl;
-        //std::cout << "--ou is " << out.col(num_good_gcp).transpose() << std::endl;
-        num_good_gcp++;
-      }
-
-      in.conservativeResize(Eigen::NoChange_t(), num_good_gcp);
-      out.conservativeResize(Eigen::NoChange_t(), num_good_gcp);
-      std::cout << "---must check here that we have at least 3 points!!!"
-                << std::endl;
-
-      Eigen::Affine3d T = Find3DAffineTransform(in, out);
-      double scale = pow(T.linear().determinant(), 1.0 / 3.0);
-
-      std::cout << "--det is " << T.linear().determinant() << std::endl;
-      std::cout << "Transform to world coordinates." << std::endl;
-      std::cout << "Rotation:\n" << T.linear() / scale << std::endl;
-      std::cout << "Scale:\n" << scale << std::endl;
-      std::cout << "Translation:\n" << T.translation().transpose()
-                << std::endl;
-
-      // Represent the transform as y = scale*A*x + b
-      Eigen::MatrixXd eA = T.linear()/scale;
-      Eigen::Vector3d eb = T.translation();
-
-      // Store in VW matrices and vectors
-      vw::Matrix3x3 A;
-      for (size_t r = 0; r < A.rows(); r++) {
-        for (size_t c = 0; c < A.cols(); c++) {
-          A(r, c) = eA(r, c);
-        }
-      }
-      vw::Vector3 b;
-      for (size_t i = 0; i < b.size(); i++)
-        b[i] = eb[i];
+    }
+    vw::Vector3 b;
+    for (size_t i = 0; i < b.size(); i++)
+      b[i] = eb[i];
 
 
-      // Apply the transform to the cameras
-      std::cout << "---do the xyz points" << std::endl;
-      for (int icam = 0; icam < num_cams; icam++){
-        vw::camera::PinholeModel * pincam
-          = dynamic_cast<vw::camera::PinholeModel*>(opt.camera_models[icam].get());
-        VW_ASSERT(pincam != NULL,
-                  vw::ArgumentErr() << "A pinhole camera expected.\n");
+    // Apply the transform to the cameras
+    std::cout << "---do the xyz points" << std::endl;
+    for (int icam = 0; icam < num_cams; icam++){
+      vw::camera::PinholeModel * pincam
+        = dynamic_cast<vw::camera::PinholeModel*>(opt.camera_models[icam].get());
+      VW_ASSERT(pincam != NULL,
+                vw::ArgumentErr() << "A pinhole camera expected.\n");
 
-        vw::Vector3 position = pincam->camera_center();
-        vw::Quat pose = pincam->camera_pose();
+      vw::Vector3 position = pincam->camera_center();
+      vw::Quat pose = pincam->camera_pose();
 
-        vw::Vector2 fl = pincam->focal_length();
-        vw::Vector2 po = pincam->point_offset();
+      vw::Vector2 fl = pincam->focal_length();
+      vw::Vector2 po = pincam->point_offset();
 
-        // New position and rotation
-        position = scale*A*position + b;
-        vw::Quat aq(A);
-        pose = aq*pose;
+      // New position and rotation
+      position = scale*A*position + b;
+      vw::Quat aq(A);
+      pose = aq*pose;
 
-        *pincam = vw::camera::PinholeModel(position,
-                                            pose.rotation_matrix(),
-                                            fl[0], fl[1],  // focal lengths
-                                            po[0], po[1]); // pixel offsets
+      *pincam = vw::camera::PinholeModel(position,
+                                         pose.rotation_matrix(),
+                                         fl[0], fl[1],  // focal lengths
+                                         po[0], po[1]); // pixel offsets
 
-        std::cout << "model: " << *pincam << std::endl;
-      }
-
-
-      ba_model.put_pinhole_models(opt.camera_models);
-      ba_model.get_pinhole_models(opt.camera_models);
-      ba_model.put_pinhole_models(opt.camera_models);
-
-      for (int ipt = 0; ipt < (int)cnet.size(); ipt++){
-        if (cnet[ipt].type() != ControlPoint::GroundControlPoint) continue;
-
-        ControlPoint cp_new = cnet[ipt];
-        double minimum_angle = 0.0001;
-        vw::ba::triangulate_control_point(cp_new,
-                                          opt.camera_models,
-                                          minimum_angle);
-        Vector3 inp  = cnet[ipt].position();
-        Vector3 outp = cp_new.position();
-        std::cout << "---triangulated: " << iter << ' '
-                  << cnet[ipt].position() << ' '
-                  << cp_new.position()  << ' '
-          //<< cnet[ipt].position() - cp_new.position() << ' '
-                  << norm_2(cnet[ipt].position() - cp_new.position())<< std::endl;
-
-        std::cout << "lon lat height diff: " << opt.datum.cartesian_to_geodetic(cnet[ipt].position()) -  opt.datum.cartesian_to_geodetic( cp_new.position())  << std::endl;
-
-      }
-
-#endif
-
-      for (int ipt = 0; ipt < (int)cnet.size(); ipt++){
-        if (cnet[ipt].type() == ControlPoint::GroundControlPoint) continue;
-        double minimum_angle = 0;
-        vw::ba::triangulate_control_point(cnet[ipt],
-                                          opt.camera_models,
-                                          minimum_angle);
-      }
-
-      double rad = 6378137;
-      //double extra = 170000;
-#if 1
-      for (int icam = 0; icam < num_cams; icam++){
-        vw::camera::PinholeModel * pincam
-          = dynamic_cast<vw::camera::PinholeModel*>(opt.camera_models[icam].get());
-        VW_ASSERT(pincam != NULL,
-                  vw::ArgumentErr() << "A pinhole camera expected.\n");
-        std::cout << "model: " << *pincam << std::endl;
-
-        vw::Vector3 ctr = pincam->camera_center();
-//         if (iter == 2) {
-//           Vector2 focal = pincam->focal_length();
-//           Vector2 offset = pincam->point_offset();
-//           boost::shared_ptr<LensDistortion> lens = pincam->lens_distortion()->copy();
-//           ctr = (rad + extra)*ctr/norm_2(ctr);
-//           *pincam = PinholeModel( ctr,
-//                                    pincam->camera_pose().rotation_matrix(),
-//                                    focal[0], focal[1], offset[0], offset[1],
-//                                    pincam->coordinate_frame_u_direction(),
-//                                    pincam->coordinate_frame_v_direction(),
-//                                    pincam->coordinate_frame_w_direction(),
-//                                    *lens
-//                                    );
-//         }
+      std::cout << "model: " << *pincam << std::endl;
+    }
 
 
-        std::cout << "--input cam: " << *pincam << std::endl;
-        std::cout << "height above earth in km: "
-                  << (norm_2(ctr) - rad)/1000 << std::endl;
-      }
-#endif
+    // ba_model.to_internal(opt.camera_models);
+    //ba_model.from_internal(opt.camera_models);
 
-      ba_model.put_pinhole_models(opt.camera_models);
-      ba_model.get_pinhole_models(opt.camera_models);
-      ba_model.put_pinhole_models(opt.camera_models);
+    do_ba_ceres<BAPinholeModel>(ba_model, opt);
+    ba_model.from_internal(opt.camera_models);
+
+    // ba_model.to_internal(opt.camera_models);
+    //ba_model.from_internal(opt.camera_models);
+
+    for (int ipt = 0; ipt < (int)cnet.size(); ipt++){
+      if (cnet[ipt].type() != ControlPoint::GroundControlPoint) continue;
+
+      ControlPoint cp_new = cnet[ipt];
+      double minimum_angle = 0.0001;
+      vw::ba::triangulate_control_point(cp_new,
+                                        opt.camera_models,
+                                        minimum_angle);
+      Vector3 inp  = cnet[ipt].position();
+      Vector3 outp = cp_new.position();
+      std::cout << "---triangulated: " << ' '
+                << cnet[ipt].position() << ' '
+                << cp_new.position()  << ' '
+        //<< cnet[ipt].position() - cp_new.position() << ' '
+                << norm_2(cnet[ipt].position() - cp_new.position())<< std::endl;
+
+      std::cout << "lon lat height diff: " << opt.datum.cartesian_to_geodetic(cnet[ipt].position()) -  opt.datum.cartesian_to_geodetic( cp_new.position())  << std::endl;
 
     }
 
+#endif
+
+    for (int ipt = 0; ipt < (int)cnet.size(); ipt++){
+      if (cnet[ipt].type() == ControlPoint::GroundControlPoint) continue;
+      double minimum_angle = 0;
+      vw::ba::triangulate_control_point(cnet[ipt],
+                                        opt.camera_models,
+                                        minimum_angle);
+    }
+
+//     double rad = 6378137;
+//     double extra = 200000;
+#if 1
+    for (int icam = 0; icam < num_cams; icam++){
+      vw::camera::PinholeModel * pincam
+        = dynamic_cast<vw::camera::PinholeModel*>(opt.camera_models[icam].get());
+      VW_ASSERT(pincam != NULL,
+                vw::ArgumentErr() << "A pinhole camera expected.\n");
+      std::cout << "model: " << *pincam << std::endl;
+
+      vw::Vector3 ctr = pincam->camera_center();
+//       if (iter == 2) {
+//         Vector2 focal = pincam->focal_length();
+//         Vector2 offset = pincam->point_offset();
+//         boost::shared_ptr<LensDistortion> lens = pincam->lens_distortion()->copy();
+//         ctr = (rad + extra)*ctr/norm_2(ctr);
+//         *pincam = PinholeModel( ctr,
+//                                 pincam->camera_pose().rotation_matrix(),
+//                                 focal[0], focal[1], offset[0], offset[1],
+//                                 pincam->coordinate_frame_u_direction(),
+//                                 pincam->coordinate_frame_v_direction(),
+//                                 pincam->coordinate_frame_w_direction(),
+//                                 *lens
+//                                 );
+//       }
+
+      std::cout << "--input cam: " << *pincam << std::endl;
+      std::cout << "height above earth in km: "
+                << (norm_2(ctr) - rad)/1000 << std::endl;
+    }
+#endif
+
+    // ba_model.to_internal(opt.camera_models);
+    //ba_model.from_internal(opt.camera_models);
+    //ba_model.to_internal(opt.camera_models);
 
     // Save the camera models to disk
     std::vector<std::string> cam_files;
@@ -1570,6 +1577,8 @@ int main(int argc, char* argv[]) {
       cam_file = fs::path(cam_file).replace_extension("pinhole").string();
       cam_files.push_back(cam_file);
     }
+
+    // To do: Wipe this function. Models are already in opt.camera_models.
     ba_model.write_camera_models(cam_files);
 
   } ASP_STANDARD_CATCHES;

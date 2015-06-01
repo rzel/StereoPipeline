@@ -1602,6 +1602,10 @@ int main( int argc, char *argv[] ) {
                 "Reference Meridian", 1, 1, 0);
     read_datum(opt, C, datum);
     GeoReference geo(datum);
+
+    // Set user's csv_proj4_str if specified
+    asp::handle_easting_northing(C, geo);
+
     if (C.format == asp::EASTING_HEIGHT_NORTHING){
       // The user must specify either the utm zone, or otherwise
       // a custom proj4 string. The former is not documented and is

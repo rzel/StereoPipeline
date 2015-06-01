@@ -204,18 +204,14 @@ void las_or_csv_to_tifs(Options& opt, vw::cartography::GeoReference const& geore
                << "CSV format string was not set.\n");
   }
 
-  // Set the georef for CSV files
-  GeoReference csv_georef = georef;
   asp::CsvConv csv_conv;
   asp::parse_csv_format(opt.csv_format_str, opt.csv_proj4_str, csv_conv);
-  if (csv_conv.format == asp::EASTING_HEIGHT_NORTHING){
-    try{
-      csv_georef.set_UTM(csv_conv.utm_zone, csv_conv.utm_north);
-    } catch ( const std::exception& e ) {
-      vw_throw(ArgumentErr() << "Detected error: " << e.what()
-               << "\nPlease check if you are using an Earth datum.\n");
-    }
-  }
+
+  // Set the georef for CSV files
+  GeoReference csv_georef = georef;
+
+  // Set user's csv_proj4_str if specified
+  asp::handle_easting_northing(csv_conv, csv_georef);
 
   // There are situations in which some files will already be tif, and
   // others will be LAS or CSV. When we convert the latter to tif,
@@ -243,10 +239,13 @@ void las_or_csv_to_tifs(Options& opt, vw::cartography::GeoReference const& geore
     num_rows = std::max(1, (int)ceil(sqrt(double(max_num_pts))));
   }
 
-  // This is very important. For efficiency later, we don't want to create blocks
-  // smaller than what OrthoImageView will use later.
+  // This is very important. For efficiency later, we don't want to
+  // create blocks smaller than what OrthoImageView will use later.
   int block_size = asp::OrthoRasterizerView::max_subblock_size();
 
+  // For csv and las files, create temporary tif files. In those files
+  // we'll have the points binned so that nearby points have nearby
+  // indices.  This is key to fast rasterization later.
   for (int i = 0; i < num_files; i++){
 
     if (!asp::is_las_or_csv(opt.pointcloud_files[i])) continue;
@@ -1153,6 +1152,15 @@ int main( int argc, char *argv[] ) {
     // transform because this projection never requires us to convert to
     // or from pixel space.
     GeoReference georef;
+
+    // If the user specified a PROJ.4 string to use to interpret the
+    // input in CSV files, use the same string to create output DEMs,
+    // unless the user explicitly sets the output PROJ.4 string.
+    if ( !opt.csv_proj4_str.empty() && opt.target_srs_string.empty()) {
+      vw_out() << "The PROJ.4 string for reading CSV files was set. "
+               << "Will use it for output as well.\n";
+      opt.target_srs_string = opt.csv_proj4_str;
+    }
 
     // If the data was left in cartesian coordinates, we need to give
     // the DEM a projection that uses some physical units (meters),
