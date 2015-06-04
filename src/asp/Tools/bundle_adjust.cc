@@ -1265,7 +1265,7 @@ int main(int argc, char* argv[]) {
     std::cout << "input image center: " << V << std::endl;
 
     double rad = 6378137;
-    double extra = 200000;
+    double extra = 150000.0;
     for (int icam = 0; icam < num_cams; icam++){
       vw::camera::PinholeModel * pincam
         = dynamic_cast<vw::camera::PinholeModel*>(opt.camera_models[icam].get());
@@ -1371,8 +1371,8 @@ int main(int argc, char* argv[]) {
     if (!opt.have_input_cams && !have_pinhole)
       update_cnet_and_init_cams(opt, *opt.cnet);
 
-    //     int max_iter = 5;
-    //     for (int iter = 0; iter < max_iter; iter++) {
+    int max_iter = 5;
+    for (int iter = 0; iter < max_iter; iter++) {
 
     do_ba_ceres<BAPinholeModel>(ba_model, opt);
     ba_model.from_internal(opt.camera_models);
@@ -1384,13 +1384,15 @@ int main(int argc, char* argv[]) {
     std::cout << "---cnet size " << (int)cnet.size() << std::endl;
     if (!opt.have_input_cams) {
       std::cout << "--adding control points!!!" << std::endl;
-      add_ground_control_points( (*opt.cnet), opt.image_files,
-                                 opt.gcp_files.begin(), opt.gcp_files.end(),
-                                 opt.datum);
+      if (iter ==0) {
+        add_ground_control_points( (*opt.cnet), opt.image_files,
+                                   opt.gcp_files.begin(), opt.gcp_files.end(),
+                                   opt.datum);
+      }
     }
     std::cout << "--cnet size " << (int)cnet.size() << std::endl;
 
-//     ba_model.from_internal(opt.camera_models);
+    //     ba_model.from_internal(opt.camera_models);
 #if 1
     // Use GCP to transform the cameras to the correct coordinate system
 
@@ -1514,12 +1516,12 @@ int main(int argc, char* argv[]) {
       Vector3 inp  = cnet[ipt].position();
       Vector3 outp = cp_new.position();
       std::cout << "---triangulated: " << ' '
-                << cnet[ipt].position() << ' '
-                << cp_new.position()  << ' '
-        //<< cnet[ipt].position() - cp_new.position() << ' '
-                << norm_2(cnet[ipt].position() - cp_new.position())<< std::endl;
+                << inp << ' '
+                << outp  << ' '
+        //<< inp - outp << ' '
+                << norm_2(inp - outp)<< std::endl;
 
-      std::cout << "lon lat height diff: " << opt.datum.cartesian_to_geodetic(cnet[ipt].position()) -  opt.datum.cartesian_to_geodetic( cp_new.position())  << std::endl;
+      std::cout << "lon lat height diff: " << opt.datum.cartesian_to_geodetic(inp) -  opt.datum.cartesian_to_geodetic(outp)  << std::endl;
 
     }
 
@@ -1564,6 +1566,7 @@ int main(int argc, char* argv[]) {
                 << (norm_2(ctr) - rad)/1000 << std::endl;
     }
 #endif
+    }
 
     // ba_model.to_internal(opt.camera_models);
     //ba_model.from_internal(opt.camera_models);
