@@ -1246,7 +1246,8 @@ int main(int argc, char* argv[]) {
     Vector2i right_size = asp::file_image_size(opt.image_files[1]);
 
     //double fov = atof(getenv("A")) * 2*M_PI/360.0; // field of view in radians
-    double fov = 80.0 * 2*M_PI/360.0; // field of view in radians
+    //double fov = 80.0 * 2*M_PI/360.0; // field of view in radians
+    //std::cout << "--fov is " << fov << std::endl;
 
     // Use l=46; w=23; f=30.5; a=2*(180/pi)*atan(sqrt(l^2+w^2)/2/f)
     //double fov = 80.2690 * 2*M_PI/360.0; // field of view in radians
@@ -1256,8 +1257,13 @@ int main(int argc, char* argv[]) {
 
     // Should we use below first dimension, second dimension, or diagonal?
     double L = norm_2( (left_size + right_size)/2.0 ); // diagonal
+    double F = 151.37 * 20.2;
 
-    double F = L/2.0/tan(fov/2.0); // focal length in pixels
+    F = F*6.1; // atof(getenv("X"));
+
+    std::cout << "--diagonal " << L << std::endl;
+    //double F = L/2.0/tan(fov/2.0); // focal length in pixels
+
     std::cout << "pixel focal length: " << F << std::endl;
 
     std::cout << "--sizes are " << left_size << ' ' << right_size << std::endl;
@@ -1371,7 +1377,7 @@ int main(int argc, char* argv[]) {
     if (!opt.have_input_cams && !have_pinhole)
       update_cnet_and_init_cams(opt, *opt.cnet);
 
-    int max_iter = 5;
+    int max_iter = 1;
     for (int iter = 0; iter < max_iter; iter++) {
 
     do_ba_ceres<BAPinholeModel>(ba_model, opt);
