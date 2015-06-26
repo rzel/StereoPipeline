@@ -43,7 +43,7 @@ using namespace vw::ba;
 
 std::string UNSPECIFIED_DATUM = "unspecified_datum";
 
-bool have_pinhole = false;
+bool have_pinhole = true;
 
 Eigen::Affine3d Find3DAffineTransform(Eigen::Matrix3Xd in, Eigen::Matrix3Xd out) {
   // Default output
@@ -1241,7 +1241,19 @@ int main(int argc, char* argv[]) {
     }
 
     int num_cams = opt.camera_models.size();
-#if 1
+    for (int i = 0; i < num_cams; i++) {
+      std::cout << "camera: " << *(PinholeModel*)opt.camera_models[i].get() << std::endl;
+    }
+
+    std::cout << "datum is " << opt.datum << std::endl;
+    double rad = opt.datum.semi_major_axis();
+    std::cout << "planet radius is " << rad << std::endl;
+
+    // hack here
+    have_pinhole = true;
+    opt.have_input_cams = false;
+
+#if 0
     Vector2i left_size = asp::file_image_size(opt.image_files[0]);
     Vector2i right_size = asp::file_image_size(opt.image_files[1]);
 
@@ -1568,7 +1580,7 @@ int main(int argc, char* argv[]) {
 //       }
 
       std::cout << "--input cam: " << *pincam << std::endl;
-      std::cout << "height above earth in km: "
+      std::cout << "height above planet in km: "
                 << (norm_2(ctr) - rad)/1000 << std::endl;
     }
 #endif

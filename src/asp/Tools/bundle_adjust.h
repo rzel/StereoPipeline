@@ -277,7 +277,7 @@ public:
   BAPinholeModel(std::vector<cam_ptr_t> const& cameras,
                  boost::shared_ptr<vw::ba::ControlNetwork> network) :
     m_cameras(cameras), m_network(network), a(cameras.size()){
-    pose_scale = atof(getenv("P"));
+    pose_scale = 1e-3; // atof(getenv("P"));
     std::cout << "---pose scale is " << pose_scale << std::endl;
     if (pose_scale <= 0) {
       std::cout << "---error in pose_scale!" << std::endl;
