@@ -75,7 +75,7 @@ struct Options : public vw::cartography::GdalWriteOptions {
     cost_function, ba_type, mapprojected_data, gcp_data;
   int    ip_per_tile;
   double min_triangulation_angle, lambda, camera_weight, rotation_weight, 
-         translation_weight, overlap_exponent, robust_threshold;
+    translation_weight, overlap_exponent, intersection_weight, robust_threshold;
   int    report_level, min_matches, max_iterations, overlap_limit;
   bool   save_iteration, local_pinhole_input, fix_gcp_xyz, solve_intrinsics;
   std::string datum_str, camera_position_file, initial_transform_file,
@@ -102,7 +102,8 @@ struct Options : public vw::cartography::GdalWriteOptions {
   // Make sure all values are initialized, even though they will be
   // over-written later.
   Options(): ip_per_tile(0), min_triangulation_angle(0), lambda(-1.0), camera_weight(-1),
-             rotation_weight(0), translation_weight(0), overlap_exponent(0), 
+             rotation_weight(0), translation_weight(0), overlap_exponent(0),
+             intersection_weight(0),
              robust_threshold(0), report_level(0), min_matches(0),
              max_iterations(0), overlap_limit(0), save_iteration(false),
              local_pinhole_input(false), fix_gcp_xyz(false), solve_intrinsics(false),
@@ -406,6 +407,110 @@ struct BaPinholeError {
   size_t m_icam, m_ipt;
 };
 
+// Given three cameras, intersect first two rays, get a point. Intersect last two rays,
+// get a point. Return the difference between points.
+template<class ModelT>
+struct RayPairsError {
+  RayPairsError(Vector2 const& observation_i,
+                Vector2 const& observation_j,
+                Vector2 const& observation_k,
+                double intersection_weight,
+                ModelT * const ba_model,
+                size_t icam,
+                size_t jcam,
+                size_t kcam):
+    m_observation_i(observation_i),
+    m_observation_j(observation_j),
+    m_observation_k(observation_k),
+    m_intersection_weight(intersection_weight),
+    m_ba_model(ba_model),
+    m_icam(icam),
+    m_jcam(jcam),
+    m_kcam(kcam){}
+
+  template <typename T>
+  bool operator()(const T* camera_i,
+                  const T* camera_j,
+                  const T* camera_k,
+                  T* residuals) const {
+
+    try{
+
+      size_t num_cameras = m_ba_model->num_cameras();
+      VW_ASSERT(m_icam < num_cameras, ArgumentErr() << "Out of bounds in the number of cameras");
+      VW_ASSERT(m_jcam < num_cameras, ArgumentErr() << "Out of bounds in the number of cameras");
+      VW_ASSERT(m_kcam < num_cameras, ArgumentErr() << "Out of bounds in the number of cameras");
+
+      // Copy the input data to structures expected by the BA model
+      typename ModelT::camera_vector_t cam_vec_i, cam_vec_j, cam_vec_k;
+      int cam_len = cam_vec_i.size();
+
+      for (int c = 0; c < cam_len; c++) {
+        cam_vec_i[c] = camera_i[c];
+        cam_vec_j[c] = camera_j[c];
+        cam_vec_k[c] = camera_k[c];
+      }
+      
+      // Project the current point into the current camera
+      Vector3 intersection_ij = (*m_ba_model).rays_intersection(m_icam, m_jcam,
+                                                                cam_vec_i, cam_vec_j,
+                                                                m_observation_i, m_observation_j);
+
+      Vector3 intersection_jk = (*m_ba_model).rays_intersection(m_jcam, m_kcam,
+                                                                cam_vec_j, cam_vec_k,
+                                                                m_observation_j, m_observation_k);
+
+//       std::cout << "--weight is " << m_intersection_weight << std::endl;
+//       std::cout << "--inter " << intersection_ij << ' ' << intersection_jk << ' '
+//                 << intersection_ij - intersection_jk << std::endl;
+
+      Vector3 diff = intersection_ij - intersection_jk;
+      
+      for (size_t count = 0; count < 3; count++) 
+        residuals[count] = m_intersection_weight * diff[count];
+
+    } catch (std::exception const& e) {
+      // Failed to compute residuals
+
+      Mutex::Lock lock( g_ba_mutex );
+      g_ba_num_errors++;
+      if (g_ba_num_errors < 100) {
+        vw_out(ErrorMessage) << e.what() << std::endl;
+      }else if (g_ba_num_errors == 100) {
+        vw_out() << "Will print no more error messages about "
+                 << "failing to compute residuals.\n";
+      }
+
+      for (size_t count = 0; count < 3; count++) 
+        residuals[count] = T(1e+20);
+      return false;
+    }
+    
+    return true;
+  }
+
+  // Factory to hide the construction of the CostFunction object from
+  // the client code.
+  static ceres::CostFunction* Create(Vector2 const& observation_i,
+                                     Vector2 const& observation_j,
+                                     Vector2 const& observation_k,
+                                     double intersection_weight,
+                                     ModelT * const ba_model,
+                                     size_t icam, // camera index
+                                     size_t jcam, // camera index
+                                     size_t kcam  // camera index
+                                     ){
+    return (new ceres::NumericDiffCostFunction<RayPairsError,
+            ceres::CENTRAL, 3, ModelT::camera_params_n, ModelT::camera_params_n, ModelT::camera_params_n>
+            (new RayPairsError(observation_i, observation_j, observation_k, intersection_weight,
+                               ba_model, icam, jcam, kcam)));
+  }
+
+  Vector2 m_observation_i, m_observation_j, m_observation_k;
+  double m_intersection_weight;
+  ModelT * const m_ba_model;
+  size_t m_icam, m_jcam, m_kcam;
+};
 
 /// A ceres cost function. The residual is the difference between the
 /// observed 3D point and the current (floating) 3D point, normalized by
@@ -451,17 +556,12 @@ struct CamError {
     const double POSITION_WEIGHT = 1e-2;  // Units are meters.  Don't lock the camera down too tightly.
     const double ROTATION_WEIGHT = 5e1;   // Units are in radianish range 
     
-    //std::cout << "CamError: ";
     for (size_t p = 0; p < 3; p++) {
       residuals[p] = POSITION_WEIGHT*m_weight*(cam_vec[p] - m_orig_cam[p]);
-      //std::cout << residuals[p] << ",  ";
     }
-    //std::cout << "  ::  ";
     for (size_t p = 3; p < m_orig_cam.size(); p++) {
       residuals[p] = ROTATION_WEIGHT*m_weight*(cam_vec[p] - m_orig_cam[p]);
-      //std::cout << residuals[p] << ",  ";
     }
-    //std::cout << std::endl;
 
     return true;
   }
@@ -732,6 +832,7 @@ void compute_residuals(bool apply_loss_function,
 		       size_t num_camera_params, size_t num_point_params,
 		       std::vector<size_t> const& cam_residual_counts,
 		       size_t num_gcp_residuals, 
+		       size_t num_intersection_residuals, 
 		       CameraRelationNetwork<JFeature> & crn,
 		       ceres::Problem &problem,
 		       std::vector<double> & residuals // output
@@ -747,7 +848,7 @@ void compute_residuals(bool apply_loss_function,
   const size_t num_residuals = residuals.size();
   
   // Verify our residual calculations are correct
-  size_t num_expected_residuals = num_gcp_residuals*num_point_params;
+  size_t num_expected_residuals = num_gcp_residuals*num_point_params + num_intersection_residuals*num_point_params;
   for (size_t i=0; i<num_cameras; ++i)
     num_expected_residuals += cam_residual_counts[i]*PIXEL_SIZE;
   if (opt.camera_weight > 0)
@@ -767,6 +868,7 @@ void write_residual_logs(std::string const& residual_prefix, bool apply_loss_fun
 			 size_t num_camera_params, size_t num_point_params,
 			 std::vector<size_t> const& cam_residual_counts,
 			 size_t num_gcp_residuals, 
+			 size_t num_intersection_residuals, 
 			 CameraRelationNetwork<JFeature> & crn,
 			 const double *points, const size_t num_points,
 			 std::set<int>  const& outlier_xyz,
@@ -774,7 +876,7 @@ void write_residual_logs(std::string const& residual_prefix, bool apply_loss_fun
   
   std::vector<double> residuals;
   compute_residuals(apply_loss_function, opt, num_cameras, num_camera_params, num_point_params,  
-		    cam_residual_counts,  num_gcp_residuals,  crn,  problem,  
+		    cam_residual_counts,  num_gcp_residuals, num_intersection_residuals, crn,  problem,  
 		    residuals// output
 		    );
     
@@ -865,8 +967,8 @@ void write_residual_logs(std::string const& residual_prefix, bool apply_loss_fun
   residual_file_raw_cams.close();
   residual_file.close();
   
-  if (index != num_residuals)
-    vw_throw( LogicErr() << "Have " << num_residuals << " residuals but iterated through " << index);
+  //if (index != num_residuals)
+  //vw_throw( LogicErr() << "Have " << num_residuals << " residuals but iterated through " << index);
 
   // Generate the location based files
   std::string map_prefix = residual_prefix + "_pointmap";
@@ -884,7 +986,7 @@ int update_outliers(ControlNetwork                  & cnet,
                     size_t num_cameras,
                     size_t num_camera_params, size_t num_point_params,
                     std::vector<size_t> const& cam_residual_counts,
-                    size_t num_gcp_residuals, 
+                    size_t num_gcp_residuals,  size_t num_intersection_residuals,
                     ceres::Problem &problem) {
 
   // Compute the reprojection error. Hence we should not add the contribution
@@ -893,7 +995,7 @@ int update_outliers(ControlNetwork                  & cnet,
   std::vector<double> residuals;
   compute_residuals(apply_loss_function,  
                     opt, num_cameras, num_camera_params, num_point_params,  cam_residual_counts,  
-                    num_gcp_residuals,  crn, problem,
+                    num_gcp_residuals, num_intersection_residuals, crn, problem,
                     residuals // output
                     );
 
@@ -1066,6 +1168,8 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
 
   ceres::Problem problem;
 
+  int num_intersection_residuals = 0;
+
   // Add the cost function component for difference of pixel observations
   // - Reduce error by making pixel projection consistent with observations.
   typedef CameraNode<JFeature>::iterator crn_iter;
@@ -1074,17 +1178,32 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
 
   // How many times an xyz point shows up in the problem
   std::map<double*, int> count_map;
-  if (opt.overlap_exponent > 0) {
+  if (opt.overlap_exponent > 0 || opt.intersection_weight > 0) {
     for ( int icam = 0; icam < num_cameras; icam++ ) {
       for ( crn_iter fiter = crn[icam].begin(); fiter != crn[icam].end(); fiter++ ){
         int ipt = (**fiter).m_point_id;
 	if (outlier_xyz.find(ipt) != outlier_xyz.end()) continue; // skip outliers
         double * point  = points  + ipt  * num_point_params;
         count_map[point]++;
+        if (count_map[point] == 3 ) {
+          std::cout << "--map of size 3  for " << point << std::endl;
+        }
       }
     }
   }
   
+  std::vector<vw::Vector2> obs1, obs2, obs3;
+  if (opt.intersection_weight > 0 && num_cameras == 3) {
+    obs1.resize(num_points);
+    obs2.resize(num_points);
+    obs3.resize(num_points);
+    for (int ptIter = 0; ptIter < num_points; ptIter++) {
+      obs1[ptIter] = Vector2(-1, -1);
+      obs2[ptIter] = Vector2(-1, -1);
+      obs3[ptIter] = Vector2(-1, -1);
+    }
+  }
+
   // Add the various cost functions the solver will optimize over.
   std::vector<size_t> cam_residual_counts(num_cameras);
   for ( int icam = 0; icam < num_cameras; icam++ ) {
@@ -1121,7 +1240,7 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
         double delta = pow(count_map[point] - 1.0, p);
         pixel_sigma /= delta;
       }
-      
+
       ceres::LossFunction* loss_function = get_loss_function(opt);
 
       // Call function to select the appropriate Ceres residual block to add.
@@ -1130,6 +1249,18 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
                          loss_function, problem);
                          
       cam_residual_counts[icam] += 1; // Track the number of residual blocks for each camera
+
+      if (opt.intersection_weight > 0 && num_cameras == 3 &&
+          count_map.find(point) != count_map.end() && count_map[point] == 3 ){
+
+        std::cout << "---" << std::endl;
+        std::cout << "add obs " << icam << ' ' << observation << std::endl;
+        
+        if (icam == 0) obs1[ipt] = observation;
+        if (icam == 1) obs2[ipt] = observation;
+        if (icam == 2) obs3[ipt] = observation;
+        
+      }
     }
   }
 
@@ -1202,15 +1333,46 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
     }
   }
 
+  for (size_t ipt  = 0; ipt < obs1.size(); ipt++) {
+
+    if (obs1[ipt] != Vector2(-1, -1) &&
+        obs2[ipt] != Vector2(-1, -1) &&
+        obs3[ipt] != Vector2(-1, -1) 
+        ) {
+      
+      ceres::CostFunction* cost_function = RayPairsError<ModelT>::Create(obs1[ipt],
+                                                                 obs2[ipt],
+                                                                 obs3[ipt],
+                                                                 opt.intersection_weight,
+                                                                 &ba_model,
+                                                                 0, 1, 2);
+      
+      ceres::LossFunction* loss_function = get_loss_function(opt);
+
+      double * camera_0 = cameras + 0 * num_camera_params;
+      double * camera_1 = cameras + 1 * num_camera_params;
+      double * camera_2 = cameras + 2 * num_camera_params;
+      
+      problem.AddResidualBlock(cost_function, loss_function, camera_0, camera_1, camera_2);
+      num_intersection_residuals++;
+    }
+  }
+
+  std::cout << "---num intersection residuals: " << num_intersection_residuals << std::endl;
+  
   vw_out() << "Writing initial condition files..." << std::endl;
 
   std::string residual_prefix = opt.out_prefix + "-initial_residuals_loss_function";
   write_residual_logs(residual_prefix, true,  opt, num_cameras, num_camera_params,
-                      num_point_params, cam_residual_counts, num_gcp_residuals, crn,
+                      num_point_params, cam_residual_counts, num_gcp_residuals,
+                      num_intersection_residuals,
+                      crn,
                       points, num_points, outlier_xyz, problem);
   residual_prefix = opt.out_prefix + "-initial_residuals_no_loss_function";
   write_residual_logs(residual_prefix, false, opt, num_cameras, num_camera_params,
-                      num_point_params, cam_residual_counts, num_gcp_residuals, crn,
+                      num_point_params, cam_residual_counts, num_gcp_residuals,
+                      num_intersection_residuals,
+                      crn,
                       points, num_points, outlier_xyz, problem);
 
   const size_t KML_POINT_SKIP = 30;
@@ -1264,11 +1426,14 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
   vw_out() << "Writing final condition log files..." << std::endl;
   residual_prefix = opt.out_prefix + "-final_residuals_loss_function";
   write_residual_logs(residual_prefix, true,  opt, num_cameras, num_camera_params,
-                      num_point_params, cam_residual_counts, num_gcp_residuals, crn,
+                      num_point_params, cam_residual_counts, num_gcp_residuals,
+                      num_intersection_residuals,
+                      crn,
                       points, num_points, outlier_xyz, problem);
   residual_prefix = opt.out_prefix + "-final_residuals_no_loss_function";
   write_residual_logs(residual_prefix, false, opt, num_cameras, num_camera_params,
-                      num_point_params, cam_residual_counts, num_gcp_residuals, crn,
+                      num_point_params, cam_residual_counts, num_gcp_residuals,
+                      num_intersection_residuals, crn,
                       points, num_points, outlier_xyz, problem);
 
   point_kml_path = opt.out_prefix + "-final_points.kml";
@@ -1299,7 +1464,7 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
       update_outliers(cnet, crn, points, num_points,
                       outlier_xyz,   // in-out
                       opt, num_cameras, num_camera_params, num_point_params, cam_residual_counts,  
-                      num_gcp_residuals, problem);
+                      num_gcp_residuals, num_intersection_residuals, problem);
 
 
   // Create a match file with clean points.
@@ -2330,6 +2495,8 @@ void handle_arguments( int argc, char *argv[], Options& opt ) {
                          "The weight to give to the constraint that the camera positions/orientations stay close to the original values (only for the Ceres solver).  A higher weight means that the values will change less. The options --rotation-weight and --translation-weight can be used for finer-grained control and a stronger response.")
     ("overlap-exponent",    po::value(&opt.overlap_exponent)->default_value(0.0),
      "If a feature is seen in n >= 2 images, give it a weight proportional with (n-1)^exponent.")
+    ("intersection-weight",    po::value(&opt.intersection_weight)->default_value(0.0),
+     "For features seen in 3 images, minimize this weight times the discrepancy between the intersection of first two rays and last two rays.")
     ("ip-per-tile",             po::value(&opt.ip_per_tile)->default_value(0),
      "How many interest points to detect in each 1024^2 image tile (default: automatic determination).")
     ("num-passes",             po::value(&opt.num_ba_passes)->default_value(1),

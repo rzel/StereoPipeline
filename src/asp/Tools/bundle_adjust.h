@@ -187,6 +187,29 @@ public:
     }
   }
 
+  vw::Vector3 rays_intersection(unsigned i, unsigned j,
+                                camera_vector_t const& cam_i, camera_vector_t const& cam_j,
+                                vw::Vector2 const& pix_i, vw::Vector2 const& pix_j 
+                                ) const {
+    
+    vw::Vector3 position_correction_i, position_correction_j;
+    vw::Quat    pose_correction_i, pose_correction_j;
+    parse_camera_parameters(cam_i, position_correction_i, pose_correction_i);
+    parse_camera_parameters(cam_j, position_correction_j, pose_correction_j);
+    vw::camera::AdjustedCameraModel adj_i(m_cameras[i], position_correction_i, pose_correction_i);
+    vw::camera::AdjustedCameraModel adj_j(m_cameras[j], position_correction_j, pose_correction_j);
+    try {
+      double error=0;
+      vw::stereo::StereoModel sm(&adj_i, &adj_j);
+      vw::Vector3 position = sm(pix_i, pix_j, error);
+      return position;
+    }
+    catch(...) { // If the camera parameters were bad, return a garbage pixel instead of crashing
+      //std::cout << "MISSED point at: " << point_i << "   with CAM: " << cam_j << std::endl;
+      return vw::Vector3(0, 0, 0);
+    }
+  }
+
   /// Write the adjusted camera at the given index to disk
   void write_adjustment(int j, std::string const& filename) const {
     vw::Vector3 position_correction;
@@ -570,6 +593,25 @@ public:
       return vw::Vector2(-999999,-999999);
     }
     
+  }
+
+  vw::Vector3 rays_intersection(unsigned i, unsigned j,
+                                camera_vector_t const& cam_i, camera_vector_t const& cam_j,
+                                vw::Vector2 const& pix_i, vw::Vector2 const& pix_j 
+                                ) const {
+    
+    vw::camera::PinholeModel model_i = params_to_model(cam_i);
+    vw::camera::PinholeModel model_j = params_to_model(cam_j);
+    try {
+      double error=0;
+      vw::stereo::StereoModel sm(&model_i, &model_j);
+      vw::Vector3 position = sm(pix_i, pix_j, error);
+      return position;
+    }
+    catch(...) { // If the camera parameters were bad, return a garbage pixel instead of crashing
+      //std::cout << "MISSED point at: " << point_i << "   with CAM: " << cam_j << std::endl;
+      return vw::Vector3(0, 0, 0);
+    }
   }
 
   /// Give access to the control network

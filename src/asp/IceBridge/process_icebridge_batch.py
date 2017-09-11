@@ -160,9 +160,9 @@ def robustBundleAdjust(options, inputPairs, imageCameraString,
         baOverlapLimit = MIN_BA_OVERLAP
 
     # Try several attempts
-    ipMethod  = [1,   0,   2,   1,    0,    2]
-    #ipPerTile = [500, 500, 500, 2000, 2000, 2000]
-    ipPerTile = [500, 500, 500, 500, 500, 500]
+    ipMethod  = [0,   1,   2,   1,    0,    2]
+    #ipPerTile = [2000, 2000, 2000, 2000, 2000, 2000]
+    ipPerTile = [2000, 2000, 2000, 2000, 2000, 2000]
     useBlur  = [0,   0,   0,   1,    1,    1]
    
     # Fill inputPairs with output camera names
