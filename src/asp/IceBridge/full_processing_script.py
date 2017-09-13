@@ -38,7 +38,7 @@ sys.path.insert(0, icebridgepath)
 
 import icebridge_common, fetch_icebridge_data, process_icebridge_run, extract_icebridge_ATM_points
 import input_conversions
-import asp_system_utils, asp_alg_utils, asp_geo_utils
+import asp_system_utils, asp_alg_utils, asp_geo_utils, asp_string_utils
 
 asp_system_utils.verify_python_version_is_supported()
 
@@ -144,13 +144,18 @@ def processTheRun(options, imageFolder, cameraFolder, lidarFolder, orthoFolder,
     if options.cleanup:
         processCommand += ' --cleanup'
         
-    processCommand += ' --stereo-arguments '
-
     logger = logging.getLogger(__name__)
-    logger.info('Process command: process_icebridge_run ' +
-                processCommand + options.stereoArgs.strip())
+
     args = processCommand.split()
+
+    args += ('--stereo-arguments',)
     args += (options.stereoArgs.strip(),) # Make sure this is properly passed
+
+    args += ('--ba-arguments',)
+    args += (options.baArgs.strip(),) # Make sure this is properly passed
+
+    logger.info('Process command: process_icebridge_run ' + asp_string_utils.argListToString(args))
+
     process_icebridge_run.main(args)
 
 def main(argsIn):
@@ -195,6 +200,9 @@ def main(argsIn):
         
         parser.add_argument('--stereo-arguments', dest='stereoArgs', default='--stereo-algorithm 2',
                             help='Extra arguments to pass to stereo.')
+
+        parser.add_argument('--ba-arguments', dest='baArgs', default='',
+                            help='Additional argument string to be passed to the bundle_adjust command.')
 
         parser.add_argument('--start-frame', dest='startFrame', type=int,
                           default=icebridge_common.getSmallestFrame(),
@@ -287,6 +295,7 @@ def main(argsIn):
     #options.stereoArgs = (' %s --elevation-limit %f %f ' 
     #                      % (options.stereoArgs, altLimits[0], altLimits[1]))
     options.stereoArgs = (' %s ' % (options.stereoArgs))
+    options.baArgs = (' %s ' % (options.baArgs))
 
     if options.cameraLookupFile is None:
         options.cameraLookupFile = P.join(basepath, 'camera_lookup.txt')

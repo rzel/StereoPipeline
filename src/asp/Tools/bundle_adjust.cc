@@ -434,6 +434,7 @@ struct RayPairsError {
                   const T* camera_k,
                   T* residuals) const {
 
+    bool success = true;
     try{
 
       size_t num_cameras = m_ba_model->num_cameras();
@@ -469,6 +470,10 @@ struct RayPairsError {
       for (size_t count = 0; count < 3; count++) 
         residuals[count] = m_intersection_weight * diff[count];
 
+      // Check if some intersections failed
+      if (intersection_ij == vw::Vector3(0, 0, 0) || intersection_jk == vw::Vector3(0, 0, 0)) 
+        success = false;
+        
     } catch (std::exception const& e) {
       // Failed to compute residuals
 
@@ -481,6 +486,10 @@ struct RayPairsError {
                  << "failing to compute residuals.\n";
       }
 
+      success = false;
+    }
+    
+    if (!success) {
       for (size_t count = 0; count < 3; count++) 
         residuals[count] = T(1e+20);
       return false;
@@ -501,7 +510,8 @@ struct RayPairsError {
                                      size_t kcam  // camera index
                                      ){
     return (new ceres::NumericDiffCostFunction<RayPairsError,
-            ceres::CENTRAL, 3, ModelT::camera_params_n, ModelT::camera_params_n, ModelT::camera_params_n>
+            ceres::CENTRAL, 3, ModelT::camera_params_n, ModelT::camera_params_n,
+            ModelT::camera_params_n>
             (new RayPairsError(observation_i, observation_j, observation_k, intersection_weight,
                                ba_model, icam, jcam, kcam)));
   }
@@ -1192,15 +1202,15 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
     }
   }
   
-  std::vector<vw::Vector2> obs1, obs2, obs3;
+  std::vector<vw::Vector2> obs0, obs1, obs2;
   if (opt.intersection_weight > 0 && num_cameras == 3) {
+    obs0.resize(num_points);
     obs1.resize(num_points);
     obs2.resize(num_points);
-    obs3.resize(num_points);
     for (int ptIter = 0; ptIter < num_points; ptIter++) {
+      obs0[ptIter] = Vector2(-1, -1);
       obs1[ptIter] = Vector2(-1, -1);
       obs2[ptIter] = Vector2(-1, -1);
-      obs3[ptIter] = Vector2(-1, -1);
     }
   }
 
@@ -1256,9 +1266,9 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
         std::cout << "---" << std::endl;
         std::cout << "add obs " << icam << ' ' << observation << std::endl;
         
-        if (icam == 0) obs1[ipt] = observation;
-        if (icam == 1) obs2[ipt] = observation;
-        if (icam == 2) obs3[ipt] = observation;
+        if (icam == 0) obs0[ipt] = observation;
+        if (icam == 1) obs1[ipt] = observation;
+        if (icam == 2) obs2[ipt] = observation;
         
       }
     }
@@ -1333,19 +1343,19 @@ int do_ba_ceres_one_pass(ModelT                          & ba_model,
     }
   }
 
-  for (size_t ipt  = 0; ipt < obs1.size(); ipt++) {
+  for (size_t ipt  = 0; ipt < obs0.size(); ipt++) {
 
-    if (obs1[ipt] != Vector2(-1, -1) &&
-        obs2[ipt] != Vector2(-1, -1) &&
-        obs3[ipt] != Vector2(-1, -1) 
+    if (obs0[ipt] != Vector2(-1, -1) &&
+        obs1[ipt] != Vector2(-1, -1) &&
+        obs2[ipt] != Vector2(-1, -1) 
         ) {
       
-      ceres::CostFunction* cost_function = RayPairsError<ModelT>::Create(obs1[ipt],
-                                                                 obs2[ipt],
-                                                                 obs3[ipt],
-                                                                 opt.intersection_weight,
-                                                                 &ba_model,
-                                                                 0, 1, 2);
+      ceres::CostFunction* cost_function = RayPairsError<ModelT>::Create(obs0[ipt],
+                                                                         obs1[ipt],
+                                                                         obs2[ipt],
+                                                                         opt.intersection_weight,
+                                                                         &ba_model,
+                                                                         0, 1, 2);
       
       ceres::LossFunction* loss_function = get_loss_function(opt);
 

@@ -161,7 +161,7 @@ def robustBundleAdjust(options, inputPairs, imageCameraString,
 
     # Try several attempts
     ipMethod  = [0,   1,   2,   1,    0,    2]
-    #ipPerTile = [2000, 2000, 2000, 2000, 2000, 2000]
+    #ipPerTile = [500, 500, 500, 500, 500, 500]
     ipPerTile = [2000, 2000, 2000, 2000, 2000, 2000]
     useBlur  = [0,   0,   0,   1,    1,    1]
    
@@ -195,10 +195,10 @@ def robustBundleAdjust(options, inputPairs, imageCameraString,
                 '--camera-weight %0.16g -t nadirpinhole --skip-rough-homography '+
                 '--local-pinhole --overlap-limit %d --robust-threshold %0.16g ' +
                 '--ip-detect-method %d --ip-per-tile %d --min-matches %d ' + 
-                '--overlap-exponent %0.16g --epipolar-threshold 50')
+                '--overlap-exponent %0.16g --epipolar-threshold 50 %s --ip-inlier-factor 0.12 --solve-intrinsics ')
                % (argString, bundlePrefix, threadText, heightLimitString, 
                   CAMERA_WEIGHT, baOverlapLimit, ROBUST_THRESHOLD, ipMethod[attempt],
-                  ipPerTile[attempt], MIN_IP_MATCHES, OVERLAP_EXPONENT))
+                  ipPerTile[attempt], MIN_IP_MATCHES, OVERLAP_EXPONENT, options.baArgs))
         
         if options.solve_intr:
             cmd += ' --solve-intrinsics'
@@ -400,12 +400,12 @@ def createDem(i, options, inputPairs, prefixes, demFiles, projString,
     # Testing: Is there any performance hit from using --corr-seed-mode 0 ??
     #          This skips D_sub creation and saves processing time.
     # - This epipolar threshold is post camera model based alignment so it can be quite restrictive.
-    stereoCmd = ('stereo %s %s %s %s -t nadirpinhole --alignment-method epipolar --skip-rough-homography --corr-blob-filter 50 --corr-seed-mode 0 --epipolar-threshold 10' %
-                 (argString, thisPairPrefix, threadText, extraArgs))
+    stereoCmd = ('stereo %s %s %s -t nadirpinhole --alignment-method epipolar --skip-rough-homography --corr-blob-filter 50 --corr-seed-mode 0 --epipolar-threshold 10' %
+                 (argString, thisPairPrefix, threadText))
     searchLimitString = (' --corr-search-limit -9999 -' + str(VERTICAL_SEARCH_LIMIT) +
                          ' 9999 ' + str(VERTICAL_SEARCH_LIMIT) )
     if '--stereo-algorithm 0' not in options.stereoArgs:
-        correlationArgString = (' --xcorr-threshold 2 --min-xcorr-level 1 --corr-kernel 7 7 ' 
+        correlationArgString = (' ' +  extraArgs + ' --xcorr-threshold 2 --min-xcorr-level 1 --corr-kernel 7 7 ' 
                                 + ' --corr-tile-size 9000 --cost-mode 4 --sgm-search-buffer 4 2 '
                                 + searchLimitString + ' --corr-memory-limit-mb 12000 '
                                 + options.stereoArgs
@@ -414,7 +414,7 @@ def createDem(i, options, inputPairs, prefixes, demFiles, projString,
         filterArgString = (' --rm-cleanup-passes 0 --median-filter-size 5 ' +
                            ' --texture-smooth-size 17 --texture-smooth-scale 0.14 ')
     else:
-        correlationArgString = options.stereoArgs
+        correlationArgString = ' ' + options.stereoArgs
         filterArgString = ''
          
     stereoCmd += correlationArgString
@@ -509,6 +509,9 @@ def main(argsIn):
         parser.add_option('--stereo-arguments', dest='stereoArgs', default='',
                           help='Additional argument string to be passed to the stereo command.')
                           
+        parser.add_option('--ba-arguments', dest='baArgs', default='',
+                          help='Additional argument string to be passed to the bundle_adjust command.')
+
         parser.add_option('--stereo-image-interval', dest='stereoImageInterval', default=1,
                           type='int', help='Advance this many frames to get the stereo pair. ' + \
                           ' Also sets bundle adjust overlap limit.')
@@ -708,7 +711,8 @@ def doWork(options, args, logger):
     # We can either process the batch serially, or in parallel For
     # many batches the former is preferred, with the batches
     # themselves being in parallel.
-    extraArgs = heightLimitString
+    extraArgs = "" # heightLimitString
+    # temporary!!!x
     if options.numProcessesPerBatch > 1:
         logger.info('Starting processing pool for given batch with ' +
                     str(options.numProcessesPerBatch) + ' processes.')

@@ -61,7 +61,7 @@ os.environ["PATH"] = toolspath   + os.pathsep + os.environ["PATH"]
 BATCH_COMMAND_LOG_FILE = 'batch_commands_log.txt'
 
 def processBatch(imageCameraPairs, lidarFolder, referenceDem, outputFolder, extraOptions, 
-                 outputResolution, stereoArgs, batchNum, batchLogPath=''):
+                 outputResolution, stereoArgs, baArgs, batchNum, batchLogPath=''):
     '''Processes a batch of images at once'''
 
     suppressOutput = False
@@ -75,7 +75,7 @@ def processBatch(imageCameraPairs, lidarFolder, referenceDem, outputFolder, extr
 
     # Just set the options and call the pair python tool.
     # We can try out bundle adjustment for intrinsic parameters here.
-    cmd = ('--lidar-overlay --lidar-folder %s --reference-dem %s --dem-resolution %f --output-folder %s %s %s --stereo-arguments ' 
+    cmd = ('--lidar-overlay --lidar-folder %s --reference-dem %s --dem-resolution %f --output-folder %s %s %s ' 
            % (lidarFolder, referenceDem, outputResolution, outputFolder, argString, extraOptions))
         
     if batchLogPath:
@@ -84,13 +84,23 @@ def processBatch(imageCameraPairs, lidarFolder, referenceDem, outputFolder, extr
         #   simultaneous file writer.
         with open(batchLogPath, 'a') as f:
             f.write('python ' + icebridge_common.fullPath('process_icebridge_batch.py') + ' ' + \
-                    cmd +'"'+ stereoArgs +'"\n')
+                    cmd +
+                    '  --stereo-arguments ' + '"'+ stereoArgs + '"' +
+                    '  --ba-arguments ' + '"'+ baArgs + '"' +
+                    '\n')
         return
     
     try:
         args = cmd.split()
+
+        args += ('--stereo-arguments',)
         args += (stereoArgs.strip(),) # Make sure this is properly passed
+        
+        args += ('--ba-arguments',)
+        args += (baArgs.strip(),) # Make sure this is properly passed
+        
         process_icebridge_batch.main(args)
+        
     except Exception as e:
         logger.error('Batch processing failed!\n' + str(e) +
                      traceback.print_exc())
@@ -328,6 +338,9 @@ def main(argsIn):
         parser.add_option('--stereo-arguments', dest='stereoArgs', default='',
                           help='Additional argument string to be passed to the stereo command.')
 
+        parser.add_option('--ba-arguments', dest='baArgs', default='',
+                          help='Additional argument string to be passed to the bundle_adjust command.')
+
         parser.add_option('--bundle-length', dest='bundleLength', default=2,
                           type='int', help='Number of images to bundle adjust and process at once.')
         parser.add_option('--image-stereo-interval', dest='imageStereoInterval', default=None,
@@ -518,14 +531,16 @@ def main(argsIn):
 
         if not options.logBatches:
             logger.info('Running processing batch in output folder: ' + thisOutputFolder + '\n' + 
-                        'with options: ' + extraOptions + ' --stereo-arguments ' + options.stereoArgs)
+                        'with options: ' + extraOptions +
+                        ' --stereo-arguments ' + '"' + options.stereoArgs + '"' + 
+                        ' --ba-arguments ' + '"' + options.baArgs + '"' )
         
         if not options.dryRun:
             # Generate the command call
             taskHandles.append(pool.apply_async(processBatch, 
                 (batchImageCameraPairs, lidarFolder, options.referenceDem,
                  thisOutputFolder, extraOptions, 
-                 outputResolution, options.stereoArgs, batchNum, batchLogPath)))
+                 outputResolution, options.stereoArgs, options.baArgs, batchNum, batchLogPath)))
         batchNum += 1
         
         if hitBreakFrame:
